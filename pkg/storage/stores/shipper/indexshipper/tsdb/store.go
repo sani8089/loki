@@ -39,6 +39,7 @@ type store struct {
 func NewStore(
 	name, prefix string,
 	indexShipperCfg indexshipper.Config,
+	cleanCorruptedWALs bool,
 	schemaCfg config.SchemaConfig,
 	_ *fetcher.Fetcher,
 	objectClient client.ObjectClient,
@@ -56,14 +57,14 @@ func NewStore(
 		logger: logger,
 	}
 
-	if err := storeInstance.init(name, prefix, indexShipperCfg, schemaCfg, objectClient, limits, tableRange, reg); err != nil {
+	if err := storeInstance.init(name, prefix, indexShipperCfg, cleanCorruptedWALs, schemaCfg, objectClient, limits, tableRange, reg); err != nil {
 		return nil, nil, err
 	}
 
 	return storeInstance, storeInstance.Stop, nil
 }
 
-func (s *store) init(name, prefix string, indexShipperCfg indexshipper.Config, schemaCfg config.SchemaConfig, objectClient client.ObjectClient,
+func (s *store) init(name, prefix string, indexShipperCfg indexshipper.Config, cleanCorruptedWALs bool, schemaCfg config.SchemaConfig, objectClient client.ObjectClient,
 	limits downloads.Limits, tableRange config.TableRange, reg prometheus.Registerer) error {
 
 	var err error
@@ -118,6 +119,7 @@ func (s *store) init(name, prefix string, indexShipperCfg indexshipper.Config, s
 			schemaCfg,
 			s.logger,
 			tsdbMetrics,
+			cleanCorruptedWALs,
 		)
 
 		headManager := NewHeadManager(

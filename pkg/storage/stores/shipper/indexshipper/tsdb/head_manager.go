@@ -19,6 +19,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/tsdb/chunks"
 	"github.com/prometheus/prometheus/tsdb/record"
+	"github.com/prometheus/prometheus/tsdb/wlog"
 	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
@@ -542,7 +543,7 @@ func legacyWalPath(parent string, t time.Time) string {
 
 // recoverHead recovers from all WALs belonging to some period
 // and inserts it into the active *tenantHeads
-func recoverHead(name, dir string, heads *tenantHeads, wals []WALIdentifier, legacy bool) error {
+func recoverHead(name, dir string, heads *tenantHeads, wals []WALIdentifier, legacy bool, cleanCorruptedWALs bool) error {
 	for _, id := range wals {
 		// use anonymous function for ease of cleanup
 		if err := func(id WALIdentifier) error {
@@ -553,7 +554,39 @@ func recoverHead(name, dir string, heads *tenantHeads, wals []WALIdentifier, leg
 
 			reader, closer, err := wal.NewWalReader(walPath, -1)
 			if err != nil {
-				return err
+				// Check if we should attempt to repair corrupted WALs
+				/*cleanCorruptedWALs := false
+				// Parse flags to get the CleanCorruptedWALs value
+				flags := flag.CommandLine.Lookup("store.clean-corrupted-wals")
+				if flags != nil && flags.Value.String() == "true" {
+					cleanCorruptedWALs = true
+				}*/
+
+				if cleanCorruptedWALs {
+					level.Warn(log.NewNopLogger()).Log("msg", "attempting to repair corrupted WAL", "path", walPath)
+					fixed, repairErr := repairWAL(walPath)
+					if repairErr != nil {
+						level.Error(log.NewNopLogger()).Log("msg", "failed to repair corrupted WAL", "path", walPath, "err", repairErr)
+						// If repair failed, delete the WAL
+						if err := os.Remove(walPath); err != nil {
+							level.Error(log.NewNopLogger()).Log("msg", "failed to delete corrupted WAL", "path", walPath, "err", err)
+						} else {
+							level.Info(log.NewNopLogger()).Log("msg", "deleted corrupted WAL", "path", walPath)
+						}
+						return nil // Skip this WAL but don't fail the entire operation
+					}
+
+					if fixed {
+						// Try reading the repaired WAL again
+						level.Info(log.NewNopLogger()).Log("msg", "successfully repaired WAL", "path", walPath)
+						reader, closer, err = wal.NewWalReader(walPath, -1)
+						if err != nil {
+							return err
+						}
+					}
+				} else {
+					return err
+				}
 			}
 			defer closer.Close()
 
@@ -607,6 +640,105 @@ func recoverHead(name, dir string, heads *tenantHeads, wals []WALIdentifier, leg
 		}
 	}
 	return nil
+}
+
+// repairWAL attempts to repair a corrupted WAL file by copying all valid records to a new file.
+// Returns true if the WAL was repaired, false if it was already valid or couldn't be repaired.
+func repairWAL(walPath string) (bool, error) {
+	// Create a temporary file for the repaired WAL
+	dir := filepath.Dir(walPath)
+	tempWALPath := filepath.Join(dir, filepath.Base(walPath)+".repair")
+
+	// Open the original WAL for reading
+	origReader, origCloser, err := wal.NewWalReader(walPath, -1)
+	if err != nil {
+		return false, errors.Wrap(err, "opening WAL for repair")
+	}
+	defer origCloser.Close()
+
+	// We need to create a new WAL file for the repaired data
+	// First, ensure the temporary file doesn't exist
+	if err := os.RemoveAll(tempWALPath); err != nil {
+		return false, errors.Wrap(err, "removing existing temp WAL")
+	}
+
+	// Create a context with timeout to avoid infinite reads on heavily corrupted files
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	// Create a buffer to hold valid records
+	var validRecords [][]byte
+
+	// Read all valid records from the original WAL
+	recordCount := 0
+	corrupted := false
+
+	for origReader.Next() {
+		select {
+		case <-ctx.Done():
+			return false, errors.New("timeout reading WAL")
+		default:
+			// Try to read and decode the record to check if it's valid
+			rec := origReader.Record()
+			// Make a copy of the record as origReader reuses the buffer
+			recordCopy := make([]byte, len(rec))
+			copy(recordCopy, rec)
+
+			// Test if the record is valid by attempting to decode it
+			walRec := &WALRecord{}
+			if err := decodeWALRecord(recordCopy, walRec); err != nil {
+				corrupted = true
+				// Stop at the first corrupted record
+				break
+			}
+
+			// Record is valid, keep it
+			validRecords = append(validRecords, recordCopy)
+			recordCount++
+		}
+	}
+
+	if err := origReader.Err(); err != nil {
+		corrupted = true
+	}
+
+	if !corrupted {
+		// The WAL file was not corrupted, nothing to repair
+		return false, nil
+	}
+
+	// Create the temporary WAL file
+	tmpFile, err := os.Create(tempWALPath)
+	if err != nil {
+		return false, errors.Wrap(err, "creating temporary WAL file")
+	}
+	defer tmpFile.Close()
+
+	// Create a new WAL segment
+	w, err := wlog.NewSize(nil, nil, tempWALPath, 0, wlog.CompressionNone)
+	if err != nil {
+		return false, errors.Wrap(err, "creating temporary WAL")
+	}
+	defer w.Close()
+
+	// Write all valid records to the new WAL
+	for _, record := range validRecords {
+		if err := w.Log(record); err != nil {
+			return false, errors.Wrap(err, "writing record to repaired WAL")
+		}
+	}
+
+	// Close files before replacing
+	w.Close()
+	tmpFile.Close()
+	origCloser.Close()
+
+	// Replace the original WAL with the repaired WAL
+	if err := os.Rename(tempWALPath, walPath); err != nil {
+		return false, errors.Wrap(err, "replacing corrupted WAL with repaired version")
+	}
+
+	return true, nil
 }
 
 type WALIdentifier struct {

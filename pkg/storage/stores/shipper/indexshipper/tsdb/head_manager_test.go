@@ -49,7 +49,7 @@ func (m noopTSDBManager) BuildFromHead(_ *tenantHeads) error {
 }
 
 func (m noopTSDBManager) BuildFromWALs(_ time.Time, wals []WALIdentifier, _ bool) error {
-	return recoverHead(m.name, m.dir, m.tenantHeads, wals, false)
+	return recoverHead(m.name, m.dir, m.tenantHeads, wals, false, false)
 }
 func (m noopTSDBManager) Start() error { return nil }
 
@@ -252,7 +252,7 @@ func Test_HeadManager_RecoverHead(t *testing.T) {
 	require.Nil(t, err)
 	require.True(t, ok)
 	require.Equal(t, 1, len(grp.wals))
-	require.Nil(t, recoverHead(mgr.name, mgr.dir, mgr.activeHeads, grp.wals, false))
+	require.Nil(t, recoverHead(mgr.name, mgr.dir, mgr.activeHeads, grp.wals, false, false))
 
 	for _, c := range cases {
 		refs, err := mgr.GetChunkRefs(
@@ -593,7 +593,7 @@ func TestBuildLegacyWALs(t *testing.T) {
 			},
 		} {
 			t.Run(tc.name, func(t *testing.T) {
-				store, stop, err := NewStore(tc.store, "index/", shipperCfg, schemaCfg, nil, fsObjectClient, &zeroValueLimits{}, tc.tableRange, nil, log.NewNopLogger())
+				store, stop, err := NewStore(tc.store, "index/", shipperCfg, false, schemaCfg, nil, fsObjectClient, &zeroValueLimits{}, tc.tableRange, nil, log.NewNopLogger())
 				require.Nil(t, err)
 				refs, err := store.GetChunkRefs(
 					context.Background(),
@@ -776,16 +776,7 @@ func Test_RecoverHead_WithCorruptedWAL(t *testing.T) {
 			// Create wal identifier
 			walID := WALIdentifier{ts: now}
 
-			// Create a test-specific wrapper function that conditionally handles errors based on cleanCorruptedWALs
-			var testErr error
-			if tc.cleanCorruptedWALs {
-				// If CleanCorruptedWALs is true, we would implement a repair mechanism here
-				// For now, just pretend it worked and return nil
-				testErr = nil
-			} else {
-				// Call the real recoverHead function, which will encounter the corrupted data
-				testErr = recoverHead(storeName, dir, heads, []WALIdentifier{walID}, true)
-			}
+			var testErr error = recoverHead(storeName, dir, heads, []WALIdentifier{walID}, true, tc.cleanCorruptedWALs)
 
 			if tc.expectError {
 				require.Error(t, testErr)

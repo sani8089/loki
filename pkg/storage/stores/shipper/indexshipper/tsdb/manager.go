@@ -53,6 +53,8 @@ type tsdbManager struct {
 	sync.RWMutex
 
 	shipper indexshipper.IndexShipper
+
+	cleanCorruptedWALs bool
 }
 
 func NewTSDBManager(
@@ -64,16 +66,18 @@ func NewTSDBManager(
 	schemaCfg config.SchemaConfig,
 	logger log.Logger,
 	metrics *Metrics,
+	cleanCorruptedWALs bool,
 ) TSDBManager {
 	return &tsdbManager{
-		name:       name,
-		nodeName:   nodeName,
-		log:        log.With(logger, "component", "tsdb-manager"),
-		dir:        dir,
-		metrics:    metrics,
-		tableRange: tableRange,
-		schemaCfg:  schemaCfg,
-		shipper:    indexShipper,
+		name:               name,
+		nodeName:           nodeName,
+		log:                log.With(logger, "component", "tsdb-manager"),
+		dir:                dir,
+		metrics:            metrics,
+		tableRange:         tableRange,
+		schemaCfg:          schemaCfg,
+		shipper:            indexShipper,
+		cleanCorruptedWALs: cleanCorruptedWALs,
 	}
 }
 
@@ -287,7 +291,7 @@ func (m *tsdbManager) BuildFromWALs(t time.Time, ids []WALIdentifier, legacy boo
 	level.Debug(m.log).Log("msg", "recovering tenant heads")
 	for _, id := range ids {
 		tmp := newTenantHeads(id.ts, defaultHeadManagerStripeSize, m.metrics, m.log)
-		if err = recoverHead(m.name, m.dir, tmp, []WALIdentifier{id}, legacy); err != nil {
+		if err = recoverHead(m.name, m.dir, tmp, []WALIdentifier{id}, legacy, m.cleanCorruptedWALs); err != nil {
 			return errors.Wrap(err, "building TSDB from WALs")
 		}
 
