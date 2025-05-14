@@ -13,6 +13,8 @@ type Config struct {
 
 	// LimitedLogPushErrors is to be implemented and will allow logging push failures at a controlled pace.
 	LimitedLogPushErrors bool `yaml:"limited_log_push_errors"`
+
+	CleanCorruptedWALs bool `yaml:"clean_corrupted_wals" category:"experimental" doc:"hidden"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -23,6 +25,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.LogDuplicateMetrics, "operation-config.log-duplicate-metrics", false, "Log metrics for duplicate lines received.")
 	f.BoolVar(&cfg.LogDuplicateStreamInfo, "operation-config.log-duplicate-stream-info", false, "Log stream info for duplicate lines received")
 	f.BoolVar(&cfg.LimitedLogPushErrors, "operation-config.limited-log-push-errors", true, "Log push errors with a rate limited logger, will show client push errors without overly spamming logs.")
+	f.BoolVar(&cfg.CleanCorruptedWALs, "operation-config.clean-corrupted-wals", true, "Clean corrupted WALs.  Will attempt to repair corrupted WALs if possible, otherwise will delete them.")
 }
 
 // When we load YAML from disk, we want the various per-customer limits
