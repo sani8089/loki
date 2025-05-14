@@ -308,6 +308,8 @@ type Config struct {
 	// It is required for getting chunk ids of recently flushed chunks from the ingesters.
 	EnableAsyncStore bool          `yaml:"-"`
 	AsyncStoreConfig AsyncStoreCfg `yaml:"-"`
+
+	CleanCorruptedWALs bool `yaml:"clean_corrupted_wals" category:"experimental" doc:"hidden"`
 }
 
 // RegisterFlags adds the flags required to configure this flag set.
@@ -339,6 +341,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.MaxChunkBatchSize, "store.max-chunk-batch-size", 50, "The maximum number of chunks to fetch per batch.")
 	cfg.TSDBShipperConfig.RegisterFlagsWithPrefix("tsdb.", f)
 	cfg.BloomShipperConfig.RegisterFlagsWithPrefix("bloom.", f)
+	f.BoolVar(&cfg.CleanCorruptedWALs, "store.clean-corrupted-wals", false, "Clean corrupted WALs.  Will attempt to repair corrupted WALs if possible, otherwise will delete them.")
 }
 
 // Validate config and returns error on failure
