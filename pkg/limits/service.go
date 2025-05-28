@@ -395,7 +395,7 @@ func (s *Service) ExceedsLimits(ctx context.Context, req *proto.ExceedsLimitsReq
 	streams = streams[:valid]
 
 	cond := streamLimitExceeded(maxActiveStreams)
-	accepted, rejected := s.usage.update(req.Tenant, streams, lastSeenAt, cond)
+	accepted, rejected := s.usage.updateBulk(req.Tenant, streams, lastSeenAt, cond)
 
 	var ingestedBytes uint64
 	for _, stream := range accepted {

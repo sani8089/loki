@@ -164,9 +164,9 @@ func TestUsageStore_Store(t *testing.T) {
 			s := newUsageStore(DefaultActiveWindow, DefaultRateWindow, DefaultBucketSize, test.numPartitions)
 			clock := quartz.NewMock(t)
 			s.clock = clock
-			s.update("tenant", test.seed, clock.Now(), nil)
+			s.updateBulk("tenant", test.seed, clock.Now(), nil)
 			streamLimitCond := streamLimitExceeded(test.maxGlobalStreams)
-			accepted, rejected := s.update("tenant", test.streams, clock.Now(), streamLimitCond)
+			accepted, rejected := s.updateBulk("tenant", test.streams, clock.Now(), streamLimitCond)
 			require.ElementsMatch(t, test.expectedAccepted, accepted)
 			require.ElementsMatch(t, test.expectedRejected, rejected)
 		})

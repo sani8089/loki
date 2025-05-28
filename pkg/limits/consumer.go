@@ -177,7 +177,7 @@ func (c *consumer) processRecord(_ context.Context, state partitionState, r *kgo
 		c.recordsDiscarded.Inc()
 		return nil
 	}
-	c.usage.update(s.Tenant, []*proto.StreamMetadata{s.Metadata}, r.Timestamp, nil)
+	c.usage.updateBulk(s.Tenant, []*proto.StreamMetadata{s.Metadata}, r.Timestamp, nil)
 	return nil
 }
 

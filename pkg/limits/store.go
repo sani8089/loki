@@ -105,7 +105,7 @@ func (s *usageStore) iterTenant(tenant string, fn iterateFunc) {
 	})
 }
 
-func (s *usageStore) update(tenant string, streams []*proto.StreamMetadata, lastSeenAt time.Time, cond condFunc) ([]*proto.StreamMetadata, []*proto.StreamMetadata) {
+func (s *usageStore) updateBulk(tenant string, streams []*proto.StreamMetadata, lastSeenAt time.Time, cond condFunc) ([]*proto.StreamMetadata, []*proto.StreamMetadata) {
 	var (
 		// Calculate the cutoff for the window size
 		cutoff = lastSeenAt.Add(-s.activeWindow).UnixNano()

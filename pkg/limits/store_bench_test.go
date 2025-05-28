@@ -8,7 +8,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/limits/proto"
 )
 
-func BenchmarkUsageStore_Store(b *testing.B) {
+func BenchmarkUsageStore_UpdateBulk(b *testing.B) {
 	benchmarks := []struct {
 		name                string
 		numTenants          int
@@ -58,7 +58,7 @@ func BenchmarkUsageStore_Store(b *testing.B) {
 					TotalSize:  1500,
 				}}
 
-				s.update(tenant, metadata, updateTime, nil)
+				s.updateBulk(tenant, metadata, updateTime, nil)
 			}
 		})
 
@@ -77,7 +77,7 @@ func BenchmarkUsageStore_Store(b *testing.B) {
 					TotalSize:  1500,
 				}}
 
-				s.update(tenant, metadata, updateTime, nil)
+				s.updateBulk(tenant, metadata, updateTime, nil)
 			}
 		})
 
@@ -99,7 +99,7 @@ func BenchmarkUsageStore_Store(b *testing.B) {
 						TotalSize:  1500,
 					}}
 
-					s.update(tenant, metadata, updateTime, nil)
+					s.updateBulk(tenant, metadata, updateTime, nil)
 					i++
 				}
 			})
@@ -120,7 +120,7 @@ func BenchmarkUsageStore_Store(b *testing.B) {
 						TotalSize:  1500,
 					}}
 
-					s.update(tenant, metadata, updateTime, nil)
+					s.updateBulk(tenant, metadata, updateTime, nil)
 					i++
 				}
 			})
