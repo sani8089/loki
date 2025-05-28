@@ -77,10 +77,10 @@ func newUsageStore(activeWindow, rateWindow, bucketSize time.Duration, numPartit
 	return s
 }
 
-// all iterates all streams, and calls the [iterateFunc] closure for each
-// iterated stream. As [all] acquires a read lock, the closure must not
-// make blocking calls while iterating streams.
-func (s *usageStore) all(fn iterateFunc) {
+// iter iterates all streams, and calls the closure for each iterated stream.
+// As this method acquires a read lock, the closure must not make blocking
+// calls while iterating streams.
+func (s *usageStore) iter(fn iterateFunc) {
 	s.forEachRLock(func(i int) {
 		for tenant, partitions := range s.stripes[i] {
 			for partition, streams := range partitions {
@@ -92,10 +92,10 @@ func (s *usageStore) all(fn iterateFunc) {
 	})
 }
 
-// forTenant iterates all streams for the tenant, and calls the [iterateFunc]
-// closure for each iterated stream. As [forTenant] aquires a read lock, the
-// closure must not make blocking calls while iterating streams.
-func (s *usageStore) forTenant(tenant string, fn iterateFunc) {
+// iterTenant iterates all streams for the tenant, and calls the closure for
+// each iterated stream. As this method aquires a read lock, the closure must
+// not make blocking calls while iterating streams.
+func (s *usageStore) iterTenant(tenant string, fn iterateFunc) {
 	s.withRLock(tenant, func(i int) {
 		for partition, streams := range s.stripes[i][tenant] {
 			for _, stream := range streams {
