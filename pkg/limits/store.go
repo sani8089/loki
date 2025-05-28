@@ -114,14 +114,9 @@ func (s *usageStore) update(tenant string, metadata *proto.StreamMetadata, seenA
 	if !s.withinActiveWindow(seenAt) {
 		return errOutsideActiveWindow
 	}
-	var (
-		partition    = s.getPartitionForHash(metadata.StreamHash)
-		bucketStart  = seenAt.Truncate(s.bucketSize).UnixNano()
-		bucketCutoff = seenAt.Add(-s.rateWindow).UnixNano()
-	)
+	partition := s.getPartitionForHash(metadata.StreamHash)
 	s.withLock(tenant, func(i int) {
-		s.storeStream(i, tenant, partition, metadata.StreamHash,
-			metadata.TotalSize, seenAt, bucketStart, bucketCutoff)
+		s.storeStream(i, tenant, partition, metadata, seenAt)
 	})
 	return nil
 }
@@ -129,13 +124,9 @@ func (s *usageStore) update(tenant string, metadata *proto.StreamMetadata, seenA
 func (s *usageStore) updateBulk(tenant string, streams []*proto.StreamMetadata, lastSeenAt time.Time, cond condFunc) ([]*proto.StreamMetadata, []*proto.StreamMetadata) {
 	var (
 		// Calculate the cutoff for the window size
-		cutoff = lastSeenAt.Add(-s.activeWindow).UnixNano()
-		// Get the bucket for this timestamp using the configured interval duration
-		bucketStart = lastSeenAt.Truncate(s.bucketSize).UnixNano()
-		// Calculate the rate window cutoff for cleaning up old buckets
-		bucketCutoff = lastSeenAt.Add(-s.rateWindow).UnixNano()
-		stored       = make([]*proto.StreamMetadata, 0, len(streams))
-		rejected     = make([]*proto.StreamMetadata, 0, len(streams))
+		cutoff   = lastSeenAt.Add(-s.activeWindow).UnixNano()
+		stored   = make([]*proto.StreamMetadata, 0, len(streams))
+		rejected = make([]*proto.StreamMetadata, 0, len(streams))
 	)
 	s.withLock(tenant, func(i int) {
 		if _, ok := s.stripes[i][tenant]; !ok {
@@ -178,7 +169,7 @@ func (s *usageStore) updateBulk(tenant string, streams []*proto.StreamMetadata, 
 				}
 			}
 
-			s.storeStream(i, tenant, partition, stream.StreamHash, stream.TotalSize, lastSeenAt, bucketStart, bucketCutoff)
+			s.storeStream(i, tenant, partition, stream, lastSeenAt)
 
 			stored = append(stored, stream)
 		}
@@ -220,25 +211,28 @@ func (s *usageStore) evictPartitions(partitionsToEvict []int32) {
 	})
 }
 
-func (s *usageStore) storeStream(i int, tenant string, partition int32, streamHash, recTotalSize uint64, recordTime time.Time, bucketStart, bucketCutOff int64) {
+func (s *usageStore) storeStream(i int, tenant string, partition int32, metadata *proto.StreamMetadata, recordTime time.Time) {
+	bucketStart := recordTime.Truncate(s.bucketSize).UnixNano()
+	bucketCutOff := recordTime.Add(-s.rateWindow).UnixNano()
+
 	s.init(i, tenant, partition)
 
 	// Check if the stream already exists in the metadata
-	recorded, ok := s.stripes[i][tenant][partition][streamHash]
+	recorded, ok := s.stripes[i][tenant][partition][metadata.StreamHash]
 
 	// Create new stream metadata with the initial interval
 	if !ok {
-		s.stripes[i][tenant][partition][streamHash] = streamUsage{
-			hash:        streamHash,
+		s.stripes[i][tenant][partition][metadata.StreamHash] = streamUsage{
+			hash:        metadata.StreamHash,
 			lastSeenAt:  recordTime.UnixNano(),
-			totalSize:   recTotalSize,
-			rateBuckets: []rateBucket{{timestamp: bucketStart, size: recTotalSize}},
+			totalSize:   metadata.TotalSize,
+			rateBuckets: []rateBucket{{timestamp: bucketStart, size: metadata.TotalSize}},
 		}
 		return
 	}
 
 	// Update total size
-	totalSize := recTotalSize + recorded.totalSize
+	totalSize := metadata.TotalSize + recorded.totalSize
 
 	// Update or add size for the current bucket
 	updated := false
@@ -255,7 +249,7 @@ func (s *usageStore) storeStream(i int, tenant string, partition int32, streamHa
 			// Update existing bucket
 			sb = append(sb, rateBucket{
 				timestamp: bucketStart,
-				size:      bucket.size + recTotalSize,
+				size:      bucket.size + metadata.TotalSize,
 			})
 			updated = true
 		} else {
@@ -268,13 +262,13 @@ func (s *usageStore) storeStream(i int, tenant string, partition int32, streamHa
 	if !updated {
 		sb = append(sb, rateBucket{
 			timestamp: bucketStart,
-			size:      recTotalSize,
+			size:      metadata.TotalSize,
 		})
 	}
 
 	recorded.totalSize = totalSize
 	recorded.rateBuckets = sb
-	s.stripes[i][tenant][partition][streamHash] = recorded
+	s.stripes[i][tenant][partition][metadata.StreamHash] = recorded
 }
 
 // forEachRLock executes fn with a shared lock for each stripe.
