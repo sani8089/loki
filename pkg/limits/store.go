@@ -15,6 +15,8 @@ import (
 const numStripes = 64
 
 var (
+	// errOutsideActiveWindow is returned if the stream is outside the
+	// active time window.
 	errOutsideActiveWindow = errors.New("outside active time window")
 )
 
