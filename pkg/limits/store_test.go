@@ -58,7 +58,23 @@ func TestUsageStore_ForTenant(t *testing.T) {
 	require.ElementsMatch(t, expected2, actual2)
 }
 
-func TestUsageStore_Store(t *testing.T) {
+func TestStoreUpdate(t *testing.T) {
+	s := newUsageStore(DefaultActiveWindow, DefaultRateWindow, DefaultBucketSize, 1)
+	clock := quartz.NewMock(t)
+	s.clock = clock
+	metadata := &proto.StreamMetadata{
+		StreamHash: 0x1,
+		TotalSize:  100,
+	}
+	// Metadata outside the active time window is rejected.
+	time1 := clock.Now().Add(-DefaultActiveWindow)
+	require.EqualError(t, s.update("tenant1", metadata, time1), "outside active time window")
+	// Metadata within the active time window is accepted.
+	time2 := clock.Now()
+	require.NoError(t, s.update("tenant1", metadata, time2))
+}
+
+func TestUsageStore_UpdateBulk(t *testing.T) {
 	tests := []struct {
 		name             string
 		numPartitions    int
