@@ -40,11 +40,6 @@ var (
 // iterateFunc is a closure called for each stream.
 type iterateFunc func(tenant string, partition int32, stream streamUsage)
 
-// condFunc is a function that is called for each stream passed to update,
-// and is often used to check if a stream can be stored (for example, with
-// the max series limit). It should return true if the stream can be stored.
-type condFunc func(acc float64, stream *proto.StreamMetadata) bool
-
 // usageStore stores per-tenant stream usage data.
 type usageStore struct {
 	activeWindow  time.Duration
@@ -168,10 +163,12 @@ func (s *usageStore) update(tenant string, metadata *proto.StreamMetadata, seenA
 	return nil
 }
 
-func (s *usageStore) updateBulk(tenant string, streams []*proto.StreamMetadata, lastSeenAt time.Time, cond condFunc) ([]*proto.StreamMetadata, []*proto.StreamMetadata) {
+func (s *usageStore) updateBulk(tenant string, streams []*proto.StreamMetadata, lastSeenAt time.Time, limits Limits) ([]*proto.StreamMetadata, []*proto.StreamMetadata) {
 	var (
 		stored   = make([]*proto.StreamMetadata, 0, len(streams))
 		rejected = make([]*proto.StreamMetadata, 0, len(streams))
+		// Calculate the max active streams per tenant per partition
+		maxActiveStreams = limits.MaxGlobalStreamsPerUser(tenant) / s.numPartitions
 	)
 	withinActiveWindow := s.newActiveWindowFunc(s.clock.Now())
 	s.withLock(tenant, func(i int) {
@@ -204,7 +201,7 @@ func (s *usageStore) updateBulk(tenant string, streams []*proto.StreamMetadata, 
 			if !found || !withinActiveWindow(recorded.lastSeenAt) {
 				activeStreams[partition]++
 
-				if cond != nil && !cond(float64(activeStreams[partition]), stream) {
+				if activeStreams[partition] > maxActiveStreams {
 					rejected = append(rejected, stream)
 					continue
 				}
@@ -410,15 +407,6 @@ func (s *usageStore) set(tenant string, stream streamUsage) {
 		s.init(i, tenant, partition)
 		s.stripes[i][tenant][partition][stream.hash] = stream
 	})
-}
-
-// streamLimitExceeded returns a condFunc that checks if the number of active
-// streams exceeds the given limit. If it does, the stream is added to the
-// results map.
-func streamLimitExceeded(limit uint64) condFunc {
-	return func(acc float64, _ *proto.StreamMetadata) bool {
-		return acc <= float64(limit)
-	}
 }
 
 // Describe implements [prometheus.Collector].

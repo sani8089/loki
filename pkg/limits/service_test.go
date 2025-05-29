@@ -276,7 +276,7 @@ func TestService_ExceedsLimits(t *testing.T) {
 			assignedPartitions: []int32{0},
 			numPartitions:      2,
 			usage: &usageStore{
-				numPartitions: 1,
+				numPartitions: 2,
 				locks:         make([]stripeLock, 2),
 				stripes: []map[string]tenantUsage{
 					make(map[string]tenantUsage),

@@ -82,7 +82,7 @@ func TestUsageStore_UpdateBulk(t *testing.T) {
 	tests := []struct {
 		name             string
 		numPartitions    int
-		maxGlobalStreams uint64
+		maxGlobalStreams int
 		// seed contains the (optional) streams that should be seeded before
 		// the test.
 		seed             []*proto.StreamMetadata
@@ -122,7 +122,7 @@ func TestUsageStore_UpdateBulk(t *testing.T) {
 	}, {
 		name:             "one stream rejected in first partition",
 		numPartitions:    2,
-		maxGlobalStreams: 1,
+		maxGlobalStreams: 2,
 		streams: []*proto.StreamMetadata{
 			{StreamHash: 0x0, TotalSize: 1000}, // partition 0
 			{StreamHash: 0x1, TotalSize: 1000}, // partition 1
@@ -140,7 +140,7 @@ func TestUsageStore_UpdateBulk(t *testing.T) {
 	}, {
 		name:             "one stream rejected in all partitions",
 		numPartitions:    2,
-		maxGlobalStreams: 1,
+		maxGlobalStreams: 2,
 		streams: []*proto.StreamMetadata{
 			{StreamHash: 0x0, TotalSize: 1000}, // partition 0
 			{StreamHash: 0x1, TotalSize: 1000}, // partition 1
@@ -185,9 +185,11 @@ func TestUsageStore_UpdateBulk(t *testing.T) {
 			require.NoError(t, err)
 			clock := quartz.NewMock(t)
 			s.clock = clock
-			s.updateBulk("tenant", test.seed, clock.Now(), nil)
-			streamLimitCond := streamLimitExceeded(test.maxGlobalStreams)
-			accepted, rejected := s.updateBulk("tenant", test.streams, clock.Now(), streamLimitCond)
+			for _, stream := range test.seed {
+				s.update("tenant", stream, clock.Now())
+			}
+			limits := MockLimits{MaxGlobalStreams: test.maxGlobalStreams}
+			accepted, rejected := s.updateBulk("tenant", test.streams, clock.Now(), &limits)
 			require.ElementsMatch(t, test.expectedAccepted, accepted)
 			require.ElementsMatch(t, test.expectedRejected, rejected)
 		})
