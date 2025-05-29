@@ -57,8 +57,8 @@ type streamUsage struct {
 // RateBucket represents the bytes received during a specific time interval
 // It is used to calculate the rate limit for a stream.
 type rateBucket struct {
-	timestamp int64  // start of the interval
-	size      uint64 // bytes received during this interval
+	timestamp time.Time // start of the interval
+	size      uint64    // bytes received during this interval
 }
 
 type stripeLock struct {
@@ -246,8 +246,8 @@ func (s *usageStore) evictPartitions(partitionsToEvict []int32) {
 }
 
 func (s *usageStore) storeStream(i int, tenant string, partition int32, metadata *proto.StreamMetadata, recordTime time.Time) {
-	bucketStart := recordTime.Truncate(s.bucketSize).UnixNano()
-	bucketCutOff := recordTime.Add(-s.rateWindow).UnixNano()
+	bucketStart := recordTime.Truncate(s.bucketSize)
+	bucketCutOff := recordTime.Add(-s.rateWindow)
 
 	s.init(i, tenant, partition)
 
@@ -275,7 +275,7 @@ func (s *usageStore) storeStream(i int, tenant string, partition int32, metadata
 	// Only keep buckets within the rate window and update the current bucket
 	for _, bucket := range recorded.rateBuckets {
 		// Clean up buckets outside the rate window
-		if bucket.timestamp < bucketCutOff {
+		if bucket.timestamp.Before(bucketCutOff) {
 			continue
 		}
 
@@ -352,7 +352,7 @@ func (s *usageStore) getPartitionForHash(hash uint64) int32 {
 }
 
 // withinActiveWindow returns true if t is within the active window.
-func (s *usageStore) withinActiveWindow(t time.Time) bool { 
+func (s *usageStore) withinActiveWindow(t time.Time) bool {
 	return !t.Before(s.clock.Now().Add(-s.activeWindow))
 }
 

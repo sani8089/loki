@@ -67,7 +67,7 @@ func TestStoreUpdate(t *testing.T) {
 		TotalSize:  100,
 	}
 	// Metadata outside the active time window should return an error.
-	time1 := clock.Now().Add(-DefaultActiveWindow-1)
+	time1 := clock.Now().Add(-DefaultActiveWindow - 1)
 	require.EqualError(t, s.update("tenant1", metadata, time1), "outside active time window")
 	// Metadata within the active time window is accepted.
 	time2 := clock.Now()

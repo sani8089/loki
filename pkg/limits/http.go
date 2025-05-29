@@ -2,7 +2,6 @@ package limits
 
 import (
 	"net/http"
-	"time"
 
 	"github.com/go-kit/log/level"
 	"github.com/gorilla/mux"
@@ -25,9 +24,6 @@ func (s *Service) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get the rate window cutoff for rate calculations
-	rateWindowCutoff := time.Now().Add(-s.cfg.BucketSize).UnixNano()
-
 	// Calculate stream counts and status per tenant
 	var (
 		activeStreams uint64
@@ -37,11 +33,8 @@ func (s *Service) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	s.usage.iterTenant(tenant, func(_ string, _ int32, stream streamUsage) {
 		activeStreams++
-		// Calculate size only within the rate window
 		for _, bucket := range stream.rateBuckets {
-			if bucket.timestamp >= rateWindowCutoff {
-				totalSize += bucket.size
-			}
+			totalSize += bucket.size
 		}
 	})
 
