@@ -11,12 +11,14 @@ import (
 	"github.com/coder/quartz"
 	"github.com/go-kit/log"
 	"github.com/gorilla/mux"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 )
 
 func TestIngestLimits_ServeHTTP(t *testing.T) {
 	clock := quartz.NewMock(t)
-	u := newUsageStore(DefaultActiveWindow, DefaultRateWindow, DefaultBucketSize, 1)
+	u, err := newUsageStore(DefaultActiveWindow, DefaultRateWindow, DefaultBucketSize, 1, prometheus.NewRegistry())
+	require.NoError(t, err)
 	u.clock = clock
 	u.set("tenant1", streamUsage{
 		hash:      0x1,

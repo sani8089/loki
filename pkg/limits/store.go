@@ -2,11 +2,13 @@ package limits
 
 import (
 	"errors"
+	"fmt"
 	"hash/fnv"
 	"sync"
 	"time"
 
 	"github.com/coder/quartz"
+	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/grafana/loki/v3/pkg/limits/proto"
 )
@@ -18,6 +20,21 @@ var (
 	// errOutsideActiveWindow is returned if the stream is outside the
 	// active time window.
 	errOutsideActiveWindow = errors.New("outside active time window")
+)
+
+var (
+	tenantStreamsDesc = prometheus.NewDesc(
+		"loki_ingest_limits_streams",
+		"The current number of streams per tenant, including streams outside the active window.",
+		[]string{"tenant"},
+		nil,
+	)
+	tenantActiveStreamsDesc = prometheus.NewDesc(
+		"loki_ingest_limits_active_streams",
+		"The current number of active streams per tenant.",
+		[]string{"tenant"},
+		nil,
+	)
 )
 
 // iterateFunc is a closure called for each stream.
@@ -68,7 +85,7 @@ type stripeLock struct {
 }
 
 // newUsageStore returns a new UsageStore.
-func newUsageStore(activeWindow, rateWindow, bucketSize time.Duration, numPartitions int) *usageStore {
+func newUsageStore(activeWindow, rateWindow, bucketSize time.Duration, numPartitions int, reg prometheus.Registerer) (*usageStore, error) {
 	s := &usageStore{
 		activeWindow:  activeWindow,
 		rateWindow:    rateWindow,
@@ -81,47 +98,32 @@ func newUsageStore(activeWindow, rateWindow, bucketSize time.Duration, numPartit
 	for i := range s.stripes {
 		s.stripes[i] = make(map[string]tenantUsage)
 	}
-	return s
+	if err := reg.Register(s); err != nil {
+		return nil, fmt.Errorf("failed to register metrics: %w", err)
+	}
+	return s, nil
 }
 
-// count returns both the total number of active streams and the total number
-// of stored streams for all tenants.
-func (s *usageStore) count() (active map[string]int, total map[string]int) {
-	active = make(map[string]int)
-	total = make(map[string]int)
-	withinActiveWindow := s.newActiveWindowFunc()
-	s.iter(func(tenant string, _ int32, stream streamUsage) {
-		total[tenant]++
-		if withinActiveWindow(stream.lastSeenAt) {
-			active[tenant]++
-		}
-	})
-	return active, total
-}
-
-// countTenant returns both the total number of active streams and the
-// total number of stored streams for the tenant.
-func (s *usageStore) countTenant(tenant string) (active int, total int) {
-	withinActiveWindow := s.newActiveWindowFunc()
-	s.iterTenant(tenant, func(tenant string, _ int32, stream streamUsage) {
-		total++
-		if withinActiveWindow(stream.lastSeenAt) {
-			active++
-		}
-	})
-	return active, total
-}
-
-// iter iterates all active streams and calls fn for each iterated stream.
-// As this method acquires a read lock, fn must not block.
-func (s *usageStore) iter(fn iterateFunc) {
-	withinActiveWindow := s.newActiveWindowFunc()
+// iter iterates all active streams and calls f for each iterated stream.
+// As this method acquires a read lock, f must not block.
+func (s *usageStore) iter(f iterateFunc) {
+	// To prevent time moving forward while iterating, use the current time
+	// to check the active and rate window.
+	var (
+		now                = s.clock.Now()
+		withinActiveWindow = s.newActiveWindowFunc(now)
+		withinRateWindow   = s.newRateWindowFunc(now)
+	)
 	s.forEachRLock(func(i int) {
 		for tenant, partitions := range s.stripes[i] {
 			for partition, streams := range partitions {
 				for _, stream := range streams {
 					if withinActiveWindow(stream.lastSeenAt) {
-						fn(tenant, partition, stream)
+						stream.rateBuckets = getActiveRateBuckets(
+							stream.rateBuckets,
+							withinRateWindow,
+						)
+						f(tenant, partition, stream)
 					}
 				}
 			}
@@ -129,16 +131,26 @@ func (s *usageStore) iter(fn iterateFunc) {
 	})
 }
 
-// iterTenant iterates all active streams for the tenant and calls fn for
-// each iterated stream. As this method acquires a read lock, fn must not
+// iterTenant iterates all active streams for the tenant and calls f for
+// each iterated stream. As this method acquires a read lock, f must not
 // block.
-func (s *usageStore) iterTenant(tenant string, fn iterateFunc) {
-	withinActiveWindow := s.newActiveWindowFunc()
+func (s *usageStore) iterTenant(tenant string, f iterateFunc) {
+	// To prevent time moving forward while iterating, use the current time
+	// to check the active and rate window.
+	var (
+		now                = s.clock.Now()
+		withinActiveWindow = s.newActiveWindowFunc(now)
+		withinRateWindow   = s.newRateWindowFunc(now)
+	)
 	s.withRLock(tenant, func(i int) {
 		for partition, streams := range s.stripes[i][tenant] {
 			for _, stream := range streams {
 				if withinActiveWindow(stream.lastSeenAt) {
-					fn(tenant, partition, stream)
+					stream.rateBuckets = getActiveRateBuckets(
+						stream.rateBuckets,
+						withinRateWindow,
+					)
+					f(tenant, partition, stream)
 				}
 			}
 		}
@@ -161,7 +173,7 @@ func (s *usageStore) updateBulk(tenant string, streams []*proto.StreamMetadata, 
 		stored   = make([]*proto.StreamMetadata, 0, len(streams))
 		rejected = make([]*proto.StreamMetadata, 0, len(streams))
 	)
-	withinActiveWindow := s.newActiveWindowFunc()
+	withinActiveWindow := s.newActiveWindowFunc(s.clock.Now())
 	s.withLock(tenant, func(i int) {
 		if _, ok := s.stripes[i][tenant]; !ok {
 			s.stripes[i][tenant] = make(tenantUsage)
@@ -214,8 +226,8 @@ func (s *usageStore) updateBulk(tenant string, streams []*proto.StreamMetadata, 
 
 // evict evicts all streams that have not been seen within the window.
 func (s *usageStore) evict() map[string]int {
+	withinActiveWindow := s.newActiveWindowFunc(s.clock.Now())
 	evicted := make(map[string]int)
-	withinActiveWindow := s.newActiveWindowFunc()
 	s.forEachLock(func(i int) {
 		for tenant, partitions := range s.stripes[i] {
 			for partition, streams := range partitions {
@@ -357,12 +369,25 @@ func (s *usageStore) withinActiveWindow(t time.Time) bool {
 }
 
 // newActiveWindowFunc returns a func that returns true if t is within
-// the active window. It memoizes both the call to s.clock.Now() and the
-// start of the active time window.
-func (s *usageStore) newActiveWindowFunc() func(t time.Time) bool {
-	activeWindowStart := s.clock.Now().Add(-s.activeWindow)
+// the active window. It memoizes the start of the active time window.
+func (s *usageStore) newActiveWindowFunc(now time.Time) func(t time.Time) bool {
+	activeWindowStart := now.Add(-s.activeWindow)
 	return func(t time.Time) bool {
 		return !t.Before(activeWindowStart)
+	}
+}
+
+// withinRateWindow returns true if t is within the rate window.
+func (s *usageStore) withinRateWindow(t time.Time) bool {
+	return !t.Before(s.clock.Now().Add(-s.rateWindow))
+}
+
+// newRateWindowFunc returns a func that returns true if t is within
+// the rate window. It memoizes the start of the rate time window.
+func (s *usageStore) newRateWindowFunc(now time.Time) func(t time.Time) bool {
+	rateWindowStart := now.Add(-s.rateWindow)
+	return func(t time.Time) bool {
+		return !t.Before(rateWindowStart)
 	}
 }
 
@@ -394,4 +419,63 @@ func streamLimitExceeded(limit uint64) condFunc {
 	return func(acc float64, _ *proto.StreamMetadata) bool {
 		return acc <= float64(limit)
 	}
+}
+
+// Describe implements [prometheus.Collector].
+func (s *usageStore) Describe(descs chan<- *prometheus.Desc) {
+	descs <- tenantStreamsDesc
+	descs <- tenantActiveStreamsDesc
+}
+
+// Collect implements [prometheus.Collector].
+func (s *usageStore) Collect(m chan<- prometheus.Metric) {
+	var (
+		withinActiveWindow = s.newActiveWindowFunc(s.clock.Now())
+		active             = make(map[string]int)
+		total              = make(map[string]int)
+	)
+	// Count both the total number of active streams and the total number of
+	// streams for each tenants.
+	s.forEachRLock(func(i int) {
+		for tenant, partitions := range s.stripes[i] {
+			for _, streams := range partitions {
+				for _, stream := range streams {
+					total[tenant]++
+					if withinActiveWindow(stream.lastSeenAt) {
+						active[tenant]++
+					}
+				}
+			}
+		}
+	})
+	for tenant, numActiveStreams := range active {
+		m <- prometheus.MustNewConstMetric(
+			tenantActiveStreamsDesc,
+			prometheus.GaugeValue,
+			float64(numActiveStreams),
+			tenant,
+		)
+	}
+	for tenant, numStreams := range total {
+		m <- prometheus.MustNewConstMetric(
+			tenantStreamsDesc,
+			prometheus.GaugeValue,
+			float64(numStreams),
+			tenant,
+		)
+	}
+}
+
+// getActiveRateBuckets returns the buckets within the active window.
+func getActiveRateBuckets(buckets []rateBucket, withinRateWindow func(time.Time) bool) []rateBucket {
+	if buckets == nil {
+		return nil
+	}
+	result := make([]rateBucket, 0, len(buckets))
+	for _, bucket := range buckets {
+		if withinRateWindow(bucket.timestamp) {
+			result = append(result, bucket)
+		}
+	}
+	return result
 }

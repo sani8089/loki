@@ -393,9 +393,9 @@ func TestIngestLimits_ExceedsLimits_Concurrent(t *testing.T) {
 					0: {
 						1: {hash: 1, lastSeenAt: now, totalSize: 1000, rateBuckets: []rateBucket{{timestamp: now, size: 1000}}},                        // active
 						2: {hash: 2, lastSeenAt: now.Add(-30 * time.Minute), totalSize: 2000, rateBuckets: []rateBucket{{timestamp: now, size: 2000}}}, // active
-						3: {hash: 3, lastSeenAt: now.Add(-2 * time.Hour), totalSize: 3000},                                                                        // expired
+						3: {hash: 3, lastSeenAt: now.Add(-2 * time.Hour), totalSize: 3000},                                                             // expired
 						4: {hash: 4, lastSeenAt: now.Add(-45 * time.Minute), totalSize: 4000, rateBuckets: []rateBucket{{timestamp: now, size: 4000}}}, // active
-						5: {hash: 5, lastSeenAt: now.Add(-3 * time.Hour), totalSize: 5000},                                                                        // expired
+						5: {hash: 5, lastSeenAt: now.Add(-3 * time.Hour), totalSize: 5000},                                                             // expired
 					},
 				},
 			},

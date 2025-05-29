@@ -44,18 +44,6 @@ var (
 		[]string{"partition"},
 		nil,
 	)
-	tenantStreamsDesc = prometheus.NewDesc(
-		"loki_ingest_limits_streams",
-		"The current number of streams per tenant, including streams outside the active window.",
-		[]string{"tenant"},
-		nil,
-	)
-	tenantActiveStreamsDesc = prometheus.NewDesc(
-		"loki_ingest_limits_active_streams",
-		"The current number of active streams per tenant.",
-		[]string{"tenant"},
-		nil,
-	)
 )
 
 type metrics struct {
@@ -130,7 +118,6 @@ func New(cfg Config, lims Limits, logger log.Logger, reg prometheus.Registerer) 
 	s := &Service{
 		cfg:              cfg,
 		logger:           logger,
-		usage:            newUsageStore(cfg.ActiveWindow, cfg.RateWindow, cfg.BucketSize, cfg.NumPartitions),
 		partitionManager: newPartitionManager(),
 		metrics:          newMetrics(reg),
 		limits:           lims,
@@ -140,6 +127,11 @@ func New(cfg Config, lims Limits, logger log.Logger, reg prometheus.Registerer) 
 	// Initialize internal metadata metrics
 	if err := reg.Register(s); err != nil {
 		return nil, fmt.Errorf("failed to register ingest limits internal metadata metrics: %w", err)
+	}
+
+	s.usage, err = newUsageStore(cfg.ActiveWindow, cfg.RateWindow, cfg.BucketSize, cfg.NumPartitions, reg)
+	if err != nil {
+		return nil, fmt.Errorf("failed to register usage store: %w", err)
 	}
 
 	// Initialize lifecycler
@@ -217,28 +209,9 @@ func New(cfg Config, lims Limits, logger log.Logger, reg prometheus.Registerer) 
 
 func (s *Service) Describe(descs chan<- *prometheus.Desc) {
 	descs <- partitionsDesc
-	descs <- tenantStreamsDesc
-	descs <- tenantActiveStreamsDesc
 }
 
 func (s *Service) Collect(m chan<- prometheus.Metric) {
-	active, total := s.usage.count()
-	for tenant, numActiveStreams := range active {
-		m <- prometheus.MustNewConstMetric(
-			tenantActiveStreamsDesc,
-			prometheus.GaugeValue,
-			float64(numActiveStreams),
-			tenant,
-		)
-	}
-	for tenant, numStreams := range total {
-		m <- prometheus.MustNewConstMetric(
-			tenantStreamsDesc,
-			prometheus.GaugeValue,
-			float64(numStreams),
-			tenant,
-		)
-	}
 	partitions := s.partitionManager.list()
 	for partition := range partitions {
 		state, ok := s.partitionManager.getState(partition)
