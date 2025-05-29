@@ -1,12 +1,28 @@
 package limits
 
 import (
-	"context"
+	"fmt"
+	"strconv"
 	"sync"
 
 	"github.com/coder/quartz"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
+var (
+	// partitionsDesc is a gauge which tracks the state of the partitions
+	// in the partitionManager. The value of the gauge is set to the value of
+	// the partitionState enum.
+	partitionsDesc = prometheus.NewDesc(
+		"loki_ingest_limits_partitions",
+		"The state of each partition.",
+		[]string{"partition"},
+		nil,
+	)
+)
+
+// partitionState is an enum containing all of the possible states of a
+// partition.
 type partitionState int
 
 const (
@@ -29,8 +45,7 @@ func (s partitionState) String() string {
 	}
 }
 
-// partitionManager keeps track of the partitions assigned and for
-// each partition a timestamp of when it was assigned.
+// partitionManager tracks the state of all assigned partitions.
 type partitionManager struct {
 	partitions map[int32]partitionEntry
 	mtx        sync.Mutex
@@ -39,7 +54,7 @@ type partitionManager struct {
 	clock quartz.Clock
 }
 
-// partitionEntry contains metadata about an assigned partition.
+// partitionEntry contains the metadata for an assigned partition.
 type partitionEntry struct {
 	assignedAt   int64
 	targetOffset int64
@@ -47,15 +62,19 @@ type partitionEntry struct {
 }
 
 // newPartitionManager returns a new [PartitionManager].
-func newPartitionManager() *partitionManager {
-	return &partitionManager{
+func newPartitionManager(reg prometheus.Registerer) (*partitionManager, error) {
+	m := partitionManager{
 		partitions: make(map[int32]partitionEntry),
 		clock:      quartz.NewReal(),
 	}
+	if err := reg.Register(&m); err != nil {
+		return nil, fmt.Errorf("failed to register metrics: %w", err)
+	}
+	return &m, nil
 }
 
 // assign assigns the partitions.
-func (m *partitionManager) assign(_ context.Context, partitions []int32) {
+func (m *partitionManager) assign(partitions []int32) {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 	for _, partition := range partitions {
@@ -151,10 +170,29 @@ func (m *partitionManager) setReady(partition int32) bool {
 }
 
 // revoke deletes the partitions.
-func (m *partitionManager) revoke(_ context.Context, partitions []int32) {
+func (m *partitionManager) revoke(partitions []int32) {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 	for _, partition := range partitions {
 		delete(m.partitions, partition)
+	}
+}
+
+// Describe implements [prometheus.Collector].
+func (s *partitionManager) Describe(descs chan<- *prometheus.Desc) {
+	descs <- partitionsDesc
+}
+
+// Collect implements [prometheus.Collector].
+func (s *partitionManager) Collect(m chan<- prometheus.Metric) {
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
+	for partition, entry := range s.partitions {
+		m <- prometheus.MustNewConstMetric(
+			partitionsDesc,
+			prometheus.GaugeValue,
+			float64(entry.state),
+			strconv.FormatInt(int64(partition), 10),
+		)
 	}
 }

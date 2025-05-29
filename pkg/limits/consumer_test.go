@@ -43,18 +43,19 @@ func TestConsumer_ProcessRecords(t *testing.T) {
 				}},
 			}}},
 		}
-		ctx := context.Background()
+		reg := prometheus.NewRegistry()
 		// Need to assign the partition and set it to ready.
-		m := newPartitionManager()
-		m.assign(ctx, []int32{1})
+		m, err := newPartitionManager(reg)
+		require.NoError(t, err)
+		m.assign([]int32{1})
 		m.setReplaying(1, 1000)
 		// Create a usage store, we will use this to check if the record
 		// was stored.
-		reg := prometheus.NewRegistry()
 		u, err := newUsageStore(DefaultActiveWindow, DefaultRateWindow, DefaultBucketSize, 1, reg)
 		require.NoError(t, err)
 		u.clock = clock
 		c := newConsumer(&kafka, m, u, newOffsetReadinessCheck(m), "zone1", log.NewNopLogger(), reg)
+		ctx := context.Background()
 		require.NoError(t, c.pollFetches(ctx))
 		// Check that the record was stored.
 		var n int
@@ -90,18 +91,19 @@ func TestConsumer_ProcessRecords(t *testing.T) {
 				}},
 			}}},
 		}
-		ctx := context.Background()
+		reg := prometheus.NewRegistry()
 		// Need to assign the partition and set it to ready.
-		m := newPartitionManager()
-		m.assign(ctx, []int32{1})
+		m, err := newPartitionManager(reg)
+		require.NoError(t, err)
+		m.assign([]int32{1})
 		m.setReady(1)
 		// Create a usage store, we will use this to check if the record
 		// was discarded.
-		reg := prometheus.NewRegistry()
 		u, err := newUsageStore(DefaultActiveWindow, DefaultRateWindow, DefaultBucketSize, 1, reg)
 		require.NoError(t, err)
 		u.clock = clock
 		c := newConsumer(&kafka, m, u, newOffsetReadinessCheck(m), "zone1", log.NewNopLogger(), reg)
+		ctx := context.Background()
 		require.NoError(t, c.pollFetches(ctx))
 		// Check that the record was discarded.
 		var n int
@@ -166,20 +168,21 @@ func TestConsumer_ReadinessCheck(t *testing.T) {
 			}},
 		}}},
 	}
-	ctx := context.Background()
+	reg := prometheus.NewRegistry()
 	// Need to assign the partition and set it to replaying.
-	m := newPartitionManager()
-	m.assign(ctx, []int32{1})
+	m, err := newPartitionManager(reg)
+	require.NoError(t, err)
+	m.assign([]int32{1})
 	// The partition should be marked ready when the second record
 	// has been consumed.
 	m.setReplaying(1, 2)
 	// We don't need the usage store for this test.
-	reg := prometheus.NewRegistry()
 	u, err := newUsageStore(DefaultActiveWindow, DefaultRateWindow, DefaultBucketSize, 1, reg)
 	require.NoError(t, err)
 	u.clock = clock
 	c := newConsumer(&kafka, m, u, newOffsetReadinessCheck(m), "zone1", log.NewNopLogger(), reg)
 	// The first poll should fetch the first record.
+	ctx := context.Background()
 	require.NoError(t, c.pollFetches(ctx))
 	// The partition should still be replaying as we have not read up to
 	// the target offset.

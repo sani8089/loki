@@ -314,6 +314,9 @@ func TestService_ExceedsLimits(t *testing.T) {
 
 			kafkaClient := mockKafka{}
 
+			m, err := newPartitionManager(reg)
+			require.NoError(t, err)
+
 			s := &Service{
 				cfg: Config{
 					NumPartitions: tt.numPartitions,
@@ -339,13 +342,13 @@ func TestService_ExceedsLimits(t *testing.T) {
 				metrics:          newMetrics(reg),
 				limits:           limits,
 				usage:            tt.usage,
-				partitionManager: newPartitionManager(),
+				partitionManager: m,
 				clock:            clock,
 				producer:         newProducer(&kafkaClient, "test", tt.numPartitions, "", log.NewNopLogger(), reg),
 			}
 
 			// Assign the Partition IDs.
-			s.partitionManager.assign(context.Background(), tt.assignedPartitions)
+			s.partitionManager.assign(tt.assignedPartitions)
 
 			// Call ExceedsLimits.
 			req := &proto.ExceedsLimitsRequest{
@@ -404,6 +407,9 @@ func TestIngestLimits_ExceedsLimits_Concurrent(t *testing.T) {
 		clock: clock,
 	}
 
+	m, err := newPartitionManager(reg)
+	require.NoError(t, err)
+
 	s := &Service{
 		cfg: Config{
 			NumPartitions: 1,
@@ -427,7 +433,7 @@ func TestIngestLimits_ExceedsLimits_Concurrent(t *testing.T) {
 		},
 		logger:           log.NewNopLogger(),
 		usage:            usage,
-		partitionManager: newPartitionManager(),
+		partitionManager: m,
 		metrics:          newMetrics(reg),
 		limits:           limits,
 		clock:            clock,
@@ -435,7 +441,7 @@ func TestIngestLimits_ExceedsLimits_Concurrent(t *testing.T) {
 	}
 
 	// Assign the Partition IDs.
-	s.partitionManager.assign(context.Background(), []int32{0})
+	s.partitionManager.assign([]int32{0})
 
 	// Run concurrent requests
 	concurrency := 10

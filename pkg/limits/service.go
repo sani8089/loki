@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strconv"
 	"time"
 
 	"github.com/coder/quartz"
@@ -36,15 +35,6 @@ const (
 func MetadataTopic(topic string) string {
 	return topic + ".metadata"
 }
-
-var (
-	partitionsDesc = prometheus.NewDesc(
-		"loki_ingest_limits_partitions",
-		"The state of each partition.",
-		[]string{"partition"},
-		nil,
-	)
-)
 
 type metrics struct {
 	tenantStreamEvictionsTotal *prometheus.CounterVec
@@ -103,39 +93,30 @@ type Service struct {
 	clock quartz.Clock
 }
 
-// Flush implements ring.FlushTransferer. It transfers state to another ingest limits instance.
-func (s *Service) Flush() {}
-
-// TransferOut implements ring.FlushTransferer. It transfers state to another ingest limits instance.
-func (s *Service) TransferOut(_ context.Context) error {
-	return nil
-}
-
 // New creates a new IngestLimits service. It initializes the metadata map and sets up a Kafka client
 // The client is configured to consume stream metadata from a dedicated topic with the metadata suffix.
 func New(cfg Config, lims Limits, logger log.Logger, reg prometheus.Registerer) (*Service, error) {
 	var err error
-	s := &Service{
-		cfg:              cfg,
-		logger:           logger,
-		partitionManager: newPartitionManager(),
-		metrics:          newMetrics(reg),
-		limits:           lims,
-		clock:            quartz.NewReal(),
+	s := Service{
+		cfg:     cfg,
+		logger:  logger,
+		metrics: newMetrics(reg),
+		limits:  lims,
+		clock:   quartz.NewReal(),
 	}
 
-	// Initialize internal metadata metrics
-	if err := reg.Register(s); err != nil {
-		return nil, fmt.Errorf("failed to register ingest limits internal metadata metrics: %w", err)
+	s.partitionManager, err = newPartitionManager(reg)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create partition manager: %w", err)
 	}
 
 	s.usage, err = newUsageStore(cfg.ActiveWindow, cfg.RateWindow, cfg.BucketSize, cfg.NumPartitions, reg)
 	if err != nil {
-		return nil, fmt.Errorf("failed to register usage store: %w", err)
+		return nil, fmt.Errorf("failed to create usage store: %w", err)
 	}
 
 	// Initialize lifecycler
-	s.lifecycler, err = ring.NewLifecycler(cfg.LifecyclerConfig, s, RingName, RingKey, true, logger, reg)
+	s.lifecycler, err = ring.NewLifecycler(cfg.LifecyclerConfig, &s, RingName, RingKey, true, logger, reg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create %s lifecycler: %w", RingName, err)
 	}
@@ -204,26 +185,7 @@ func New(cfg Config, lims Limits, logger log.Logger, reg prometheus.Registerer) 
 	)
 
 	s.Service = services.NewBasicService(s.starting, s.running, s.stopping)
-	return s, nil
-}
-
-func (s *Service) Describe(descs chan<- *prometheus.Desc) {
-	descs <- partitionsDesc
-}
-
-func (s *Service) Collect(m chan<- prometheus.Metric) {
-	partitions := s.partitionManager.list()
-	for partition := range partitions {
-		state, ok := s.partitionManager.getState(partition)
-		if ok {
-			m <- prometheus.MustNewConstMetric(
-				partitionsDesc,
-				prometheus.GaugeValue,
-				float64(state),
-				strconv.FormatInt(int64(partition), 10),
-			)
-		}
-	}
+	return &s, nil
 }
 
 func (s *Service) CheckReady(ctx context.Context) error {
@@ -235,50 +197,6 @@ func (s *Service) CheckReady(ctx context.Context) error {
 		return fmt.Errorf("lifecycler not ready: %w", err)
 	}
 	return nil
-}
-
-// starting implements the Service interface's starting method.
-// It is called when the service starts and performs any necessary initialization.
-func (s *Service) starting(ctx context.Context) (err error) {
-	defer func() {
-		if err != nil {
-			// if starting() fails for any reason (e.g., context canceled),
-			// the lifecycler must be stopped.
-			_ = services.StopAndAwaitTerminated(context.Background(), s.lifecycler)
-		}
-	}()
-
-	// pass new context to lifecycler, so that it doesn't stop automatically when IngestLimits's service context is done
-	err = s.lifecycler.StartAsync(context.Background())
-	if err != nil {
-		return err
-	}
-
-	err = s.lifecycler.AwaitRunning(ctx)
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
-// running implements the Service interface's running method.
-// It runs the main service loop that consumes stream metadata from Kafka and manages
-// the metadata map. The method also starts a goroutine to periodically evict old streams from the metadata map.
-func (s *Service) running(ctx context.Context) error {
-	// Start the eviction goroutine
-	go s.evictOldStreamsPeriodic(ctx)
-	go s.consumer.run(ctx)
-
-	for {
-		select {
-		case <-ctx.Done():
-			return nil
-		// stop
-		case err := <-s.lifecyclerWatcher.Chan():
-			return fmt.Errorf("lifecycler failed: %w", err)
-		}
-	}
 }
 
 // evictOldStreamsPeriodic runs a periodic job that evicts old streams.
@@ -297,30 +215,6 @@ func (s *Service) evictOldStreamsPeriodic(ctx context.Context) {
 			}
 		}
 	}
-}
-
-// stopping implements the Service interface's stopping method.
-// It performs cleanup when the service is stopping, including closing the Kafka client.
-// It returns nil for expected termination cases (context cancellation or client closure)
-// and returns the original error for other failure cases.
-func (s *Service) stopping(failureCase error) error {
-	if s.clientReader != nil {
-		s.clientReader.Close()
-	}
-
-	if s.clientWriter != nil {
-		s.clientWriter.Close()
-	}
-
-	if errors.Is(failureCase, context.Canceled) || errors.Is(failureCase, kgo.ErrClientClosed) {
-		return nil
-	}
-
-	var allErrs util.MultiError
-	allErrs.Add(services.StopAndAwaitTerminated(context.Background(), s.lifecycler))
-	allErrs.Add(failureCase)
-
-	return allErrs.Err()
 }
 
 // GetAssignedPartitions implements the proto.IngestLimitsServer interface.
@@ -381,4 +275,80 @@ func (s *Service) ExceedsLimits(ctx context.Context, req *proto.ExceedsLimitsReq
 	}
 
 	return &proto.ExceedsLimitsResponse{Results: results}, nil
+}
+
+// Flush implements ring.FlushTransferer. It transfers state to another ingest limits instance.
+func (s *Service) Flush() {}
+
+// TransferOut implements ring.FlushTransferer. It transfers state to another ingest limits instance.
+func (s *Service) TransferOut(_ context.Context) error {
+	return nil
+}
+
+// starting implements the Service interface's starting method.
+// It is called when the service starts and performs any necessary initialization.
+func (s *Service) starting(ctx context.Context) (err error) {
+	defer func() {
+		if err != nil {
+			// if starting() fails for any reason (e.g., context canceled),
+			// the lifecycler must be stopped.
+			_ = services.StopAndAwaitTerminated(context.Background(), s.lifecycler)
+		}
+	}()
+
+	// pass new context to lifecycler, so that it doesn't stop automatically when IngestLimits's service context is done
+	err = s.lifecycler.StartAsync(context.Background())
+	if err != nil {
+		return err
+	}
+
+	err = s.lifecycler.AwaitRunning(ctx)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// running implements the Service interface's running method.
+// It runs the main service loop that consumes stream metadata from Kafka and manages
+// the metadata map. The method also starts a goroutine to periodically evict old streams from the metadata map.
+func (s *Service) running(ctx context.Context) error {
+	// Start the eviction goroutine
+	go s.evictOldStreamsPeriodic(ctx)
+	go s.consumer.run(ctx)
+
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		// stop
+		case err := <-s.lifecyclerWatcher.Chan():
+			return fmt.Errorf("lifecycler failed: %w", err)
+		}
+	}
+}
+
+// stopping implements the Service interface's stopping method.
+// It performs cleanup when the service is stopping, including closing the Kafka client.
+// It returns nil for expected termination cases (context cancellation or client closure)
+// and returns the original error for other failure cases.
+func (s *Service) stopping(failureCase error) error {
+	if s.clientReader != nil {
+		s.clientReader.Close()
+	}
+
+	if s.clientWriter != nil {
+		s.clientWriter.Close()
+	}
+
+	if errors.Is(failureCase, context.Canceled) || errors.Is(failureCase, kgo.ErrClientClosed) {
+		return nil
+	}
+
+	var allErrs util.MultiError
+	allErrs.Add(services.StopAndAwaitTerminated(context.Background(), s.lifecycler))
+	allErrs.Add(failureCase)
+
+	return allErrs.Err()
 }
