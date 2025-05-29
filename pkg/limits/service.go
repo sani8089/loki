@@ -222,17 +222,7 @@ func (s *Service) Describe(descs chan<- *prometheus.Desc) {
 }
 
 func (s *Service) Collect(m chan<- prometheus.Metric) {
-	cutoff := s.clock.Now().Add(-s.cfg.ActiveWindow).UnixNano()
-	// active counts the number of active streams (within the window) per tenant.
-	active := make(map[string]int)
-	// total counts the total number of streams per tenant.
-	total := make(map[string]int)
-	s.usage.iter(func(tenant string, _ int32, stream streamUsage) {
-		total[tenant]++
-		if stream.lastSeenAt >= cutoff {
-			active[tenant]++
-		}
-	})
+	active, total := s.usage.count()
 	for tenant, numActiveStreams := range active {
 		m <- prometheus.MustNewConstMetric(
 			tenantActiveStreamsDesc,

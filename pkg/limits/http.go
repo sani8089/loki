@@ -25,9 +25,6 @@ func (s *Service) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get the cutoff time for active streams
-	cutoff := time.Now().Add(-s.cfg.ActiveWindow).UnixNano()
-
 	// Get the rate window cutoff for rate calculations
 	rateWindowCutoff := time.Now().Add(-s.cfg.BucketSize).UnixNano()
 
@@ -39,14 +36,11 @@ func (s *Service) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	)
 
 	s.usage.iterTenant(tenant, func(_ string, _ int32, stream streamUsage) {
-		if stream.lastSeenAt >= cutoff {
-			activeStreams++
-
-			// Calculate size only within the rate window
-			for _, bucket := range stream.rateBuckets {
-				if bucket.timestamp >= rateWindowCutoff {
-					totalSize += bucket.size
-				}
+		activeStreams++
+		// Calculate size only within the rate window
+		for _, bucket := range stream.rateBuckets {
+			if bucket.timestamp >= rateWindowCutoff {
+				totalSize += bucket.size
 			}
 		}
 	})

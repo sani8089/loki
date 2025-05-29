@@ -53,13 +53,14 @@ func TestService_ExceedsLimits(t *testing.T) {
 					{
 						"tenant1": {
 							0: {
-								0x4: {hash: 0x4, lastSeenAt: now.UnixNano(), totalSize: 1000, rateBuckets: []rateBucket{{timestamp: now.UnixNano(), size: 1000}}},
-								0x5: {hash: 0x5, lastSeenAt: now.UnixNano(), totalSize: 2000, rateBuckets: []rateBucket{{timestamp: now.UnixNano(), size: 2000}}},
+								0x4: {hash: 0x4, lastSeenAt: now, totalSize: 1000, rateBuckets: []rateBucket{{timestamp: now.UnixNano(), size: 1000}}},
+								0x5: {hash: 0x5, lastSeenAt: now, totalSize: 2000, rateBuckets: []rateBucket{{timestamp: now.UnixNano(), size: 2000}}},
 							},
 						},
 					},
 				},
 				locks: make([]stripeLock, 1),
+				clock: clock,
 			},
 			ActiveWindow:     time.Hour,
 			rateWindow:       5 * time.Minute,
@@ -88,15 +89,16 @@ func TestService_ExceedsLimits(t *testing.T) {
 					{
 						"tenant1": {
 							0: {
-								1: {hash: 1, lastSeenAt: now.UnixNano(), totalSize: 1000, rateBuckets: []rateBucket{{timestamp: now.UnixNano(), size: 1000}}},
-								2: {hash: 2, lastSeenAt: now.UnixNano(), totalSize: 2000, rateBuckets: []rateBucket{{timestamp: now.UnixNano(), size: 2000}}},
-								3: {hash: 3, lastSeenAt: now.UnixNano(), totalSize: 3000, rateBuckets: []rateBucket{{timestamp: now.UnixNano(), size: 3000}}},
-								4: {hash: 4, lastSeenAt: now.UnixNano(), totalSize: 4000, rateBuckets: []rateBucket{{timestamp: now.UnixNano(), size: 4000}}},
+								1: {hash: 1, lastSeenAt: now, totalSize: 1000, rateBuckets: []rateBucket{{timestamp: now.UnixNano(), size: 1000}}},
+								2: {hash: 2, lastSeenAt: now, totalSize: 2000, rateBuckets: []rateBucket{{timestamp: now.UnixNano(), size: 2000}}},
+								3: {hash: 3, lastSeenAt: now, totalSize: 3000, rateBuckets: []rateBucket{{timestamp: now.UnixNano(), size: 3000}}},
+								4: {hash: 4, lastSeenAt: now, totalSize: 4000, rateBuckets: []rateBucket{{timestamp: now.UnixNano(), size: 4000}}},
 							},
 						},
 					},
 				},
 				locks: make([]stripeLock, 1),
+				clock: clock,
 			},
 			ActiveWindow: time.Hour,
 			rateWindow:   5 * time.Minute,
@@ -125,14 +127,15 @@ func TestService_ExceedsLimits(t *testing.T) {
 					{
 						"tenant1": {
 							0: {
-								0x1: {hash: 0x1, lastSeenAt: now.UnixNano(), totalSize: 1000, rateBuckets: []rateBucket{{timestamp: now.UnixNano(), size: 1000}}},
-								0x3: {hash: 0x3, lastSeenAt: now.UnixNano(), totalSize: 3000, rateBuckets: []rateBucket{{timestamp: now.UnixNano(), size: 3000}}},
-								0x5: {hash: 0x5, lastSeenAt: now.UnixNano(), totalSize: 5000, rateBuckets: []rateBucket{{timestamp: now.UnixNano(), size: 5000}}},
+								0x1: {hash: 0x1, lastSeenAt: now, totalSize: 1000, rateBuckets: []rateBucket{{timestamp: now.UnixNano(), size: 1000}}},
+								0x3: {hash: 0x3, lastSeenAt: now, totalSize: 3000, rateBuckets: []rateBucket{{timestamp: now.UnixNano(), size: 3000}}},
+								0x5: {hash: 0x5, lastSeenAt: now, totalSize: 5000, rateBuckets: []rateBucket{{timestamp: now.UnixNano(), size: 5000}}},
 							},
 						},
 					},
 				},
 				locks: make([]stripeLock, 1),
+				clock: clock,
 			},
 			ActiveWindow:     time.Hour,
 			rateWindow:       5 * time.Minute,
@@ -162,14 +165,15 @@ func TestService_ExceedsLimits(t *testing.T) {
 					{
 						"tenant1": {
 							0: {
-								0x1: {hash: 0x1, lastSeenAt: now.UnixNano(), totalSize: 1000, rateBuckets: []rateBucket{{timestamp: now.UnixNano(), size: 1000}}},
-								0x3: {hash: 0x3, lastSeenAt: now.UnixNano(), totalSize: 3000, rateBuckets: []rateBucket{{timestamp: now.UnixNano(), size: 3000}}},
-								0x5: {hash: 0x5, lastSeenAt: now.UnixNano(), totalSize: 5000, rateBuckets: []rateBucket{{timestamp: now.UnixNano(), size: 5000}}},
+								0x1: {hash: 0x1, lastSeenAt: now, totalSize: 1000, rateBuckets: []rateBucket{{timestamp: now.UnixNano(), size: 1000}}},
+								0x3: {hash: 0x3, lastSeenAt: now, totalSize: 3000, rateBuckets: []rateBucket{{timestamp: now.UnixNano(), size: 3000}}},
+								0x5: {hash: 0x5, lastSeenAt: now, totalSize: 5000, rateBuckets: []rateBucket{{timestamp: now.UnixNano(), size: 5000}}},
 							},
 						},
 					},
 				},
 				locks: make([]stripeLock, 1),
+				clock: clock,
 			},
 			ActiveWindow:     time.Hour,
 			rateWindow:       5 * time.Minute,
@@ -203,16 +207,17 @@ func TestService_ExceedsLimits(t *testing.T) {
 					{
 						"tenant1": {
 							0: {
-								0x1: {hash: 0x1, lastSeenAt: now.UnixNano(), totalSize: 1000, rateBuckets: []rateBucket{{timestamp: now.UnixNano(), size: 1000}}},
-								0x2: {hash: 0x2, lastSeenAt: now.Add(-120 * time.Minute).UnixNano(), totalSize: 2000, rateBuckets: []rateBucket{{timestamp: now.UnixNano(), size: 2000}}},
-								0x3: {hash: 0x3, lastSeenAt: now.UnixNano(), totalSize: 3000, rateBuckets: []rateBucket{{timestamp: now.UnixNano(), size: 3000}}},
-								0x4: {hash: 0x4, lastSeenAt: now.Add(-120 * time.Minute).UnixNano(), totalSize: 4000, rateBuckets: []rateBucket{{timestamp: now.UnixNano(), size: 4000}}},
-								0x5: {hash: 0x5, lastSeenAt: now.UnixNano(), totalSize: 5000, rateBuckets: []rateBucket{{timestamp: now.UnixNano(), size: 5000}}},
+								0x1: {hash: 0x1, lastSeenAt: now, totalSize: 1000, rateBuckets: []rateBucket{{timestamp: now.UnixNano(), size: 1000}}},
+								0x2: {hash: 0x2, lastSeenAt: now.Add(-120 * time.Minute), totalSize: 2000, rateBuckets: []rateBucket{{timestamp: now.UnixNano(), size: 2000}}},
+								0x3: {hash: 0x3, lastSeenAt: now, totalSize: 3000, rateBuckets: []rateBucket{{timestamp: now.UnixNano(), size: 3000}}},
+								0x4: {hash: 0x4, lastSeenAt: now.Add(-120 * time.Minute), totalSize: 4000, rateBuckets: []rateBucket{{timestamp: now.UnixNano(), size: 4000}}},
+								0x5: {hash: 0x5, lastSeenAt: now, totalSize: 5000, rateBuckets: []rateBucket{{timestamp: now.UnixNano(), size: 5000}}},
 							},
 						},
 					},
 				},
 				locks: make([]stripeLock, 1),
+				clock: clock,
 			},
 			ActiveWindow:     time.Hour,
 			rateWindow:       5 * time.Minute,
@@ -243,6 +248,7 @@ func TestService_ExceedsLimits(t *testing.T) {
 					make(map[string]tenantUsage),
 					make(map[string]tenantUsage),
 				},
+				clock: clock,
 			},
 			ActiveWindow:     time.Hour,
 			rateWindow:       5 * time.Minute,
@@ -276,6 +282,7 @@ func TestService_ExceedsLimits(t *testing.T) {
 					make(map[string]tenantUsage),
 					make(map[string]tenantUsage),
 				},
+				clock: clock,
 			},
 			ActiveWindow:     time.Hour,
 			rateWindow:       5 * time.Minute,
@@ -384,16 +391,17 @@ func TestIngestLimits_ExceedsLimits_Concurrent(t *testing.T) {
 			{
 				"tenant1": {
 					0: {
-						1: {hash: 1, lastSeenAt: now.UnixNano(), totalSize: 1000, rateBuckets: []rateBucket{{timestamp: now.UnixNano(), size: 1000}}},                        // active
-						2: {hash: 2, lastSeenAt: now.Add(-30 * time.Minute).UnixNano(), totalSize: 2000, rateBuckets: []rateBucket{{timestamp: now.UnixNano(), size: 2000}}}, // active
-						3: {hash: 3, lastSeenAt: now.Add(-2 * time.Hour).UnixNano(), totalSize: 3000},                                                                        // expired
-						4: {hash: 4, lastSeenAt: now.Add(-45 * time.Minute).UnixNano(), totalSize: 4000, rateBuckets: []rateBucket{{timestamp: now.UnixNano(), size: 4000}}}, // active
-						5: {hash: 5, lastSeenAt: now.Add(-3 * time.Hour).UnixNano(), totalSize: 5000},                                                                        // expired
+						1: {hash: 1, lastSeenAt: now, totalSize: 1000, rateBuckets: []rateBucket{{timestamp: now.UnixNano(), size: 1000}}},                        // active
+						2: {hash: 2, lastSeenAt: now.Add(-30 * time.Minute), totalSize: 2000, rateBuckets: []rateBucket{{timestamp: now.UnixNano(), size: 2000}}}, // active
+						3: {hash: 3, lastSeenAt: now.Add(-2 * time.Hour), totalSize: 3000},                                                                        // expired
+						4: {hash: 4, lastSeenAt: now.Add(-45 * time.Minute), totalSize: 4000, rateBuckets: []rateBucket{{timestamp: now.UnixNano(), size: 4000}}}, // active
+						5: {hash: 5, lastSeenAt: now.Add(-3 * time.Hour), totalSize: 5000},                                                                        // expired
 					},
 				},
 			},
 		},
 		locks: make([]stripeLock, 1),
+		clock: clock,
 	}
 
 	s := &Service{

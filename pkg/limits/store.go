@@ -49,9 +49,9 @@ type tenantUsage map[int32]map[uint64]streamUsage
 // rate limits.
 type streamUsage struct {
 	hash        uint64
-	lastSeenAt  int64
 	totalSize   uint64
 	rateBuckets []rateBucket
+	lastSeenAt  time.Time
 }
 
 // RateBucket represents the bytes received during a specific time interval
@@ -84,29 +84,62 @@ func newUsageStore(activeWindow, rateWindow, bucketSize time.Duration, numPartit
 	return s
 }
 
-// iter iterates all streams, and calls the closure for each iterated stream.
-// As this method acquires a read lock, the closure must not make blocking
-// calls while iterating streams.
+// count returns both the total number of active streams and the total number
+// of stored streams for all tenants.
+func (s *usageStore) count() (active map[string]int, total map[string]int) {
+	active = make(map[string]int)
+	total = make(map[string]int)
+	withinActiveWindow := s.newActiveWindowFunc()
+	s.iter(func(tenant string, _ int32, stream streamUsage) {
+		total[tenant]++
+		if withinActiveWindow(stream.lastSeenAt) {
+			active[tenant]++
+		}
+	})
+	return active, total
+}
+
+// countTenant returns both the total number of active streams and the
+// total number of stored streams for the tenant.
+func (s *usageStore) countTenant(tenant string) (active int, total int) {
+	withinActiveWindow := s.newActiveWindowFunc()
+	s.iterTenant(tenant, func(tenant string, _ int32, stream streamUsage) {
+		total++
+		if withinActiveWindow(stream.lastSeenAt) {
+			active++
+		}
+	})
+	return active, total
+}
+
+// iter iterates all active streams and calls fn for each iterated stream.
+// As this method acquires a read lock, fn must not block.
 func (s *usageStore) iter(fn iterateFunc) {
+	withinActiveWindow := s.newActiveWindowFunc()
 	s.forEachRLock(func(i int) {
 		for tenant, partitions := range s.stripes[i] {
 			for partition, streams := range partitions {
 				for _, stream := range streams {
-					fn(tenant, partition, stream)
+					if withinActiveWindow(stream.lastSeenAt) {
+						fn(tenant, partition, stream)
+					}
 				}
 			}
 		}
 	})
 }
 
-// iterTenant iterates all streams for the tenant, and calls the closure for
-// each iterated stream. As this method aquires a read lock, the closure must
-// not make blocking calls while iterating streams.
+// iterTenant iterates all active streams for the tenant and calls fn for
+// each iterated stream. As this method acquires a read lock, fn must not
+// block.
 func (s *usageStore) iterTenant(tenant string, fn iterateFunc) {
+	withinActiveWindow := s.newActiveWindowFunc()
 	s.withRLock(tenant, func(i int) {
 		for partition, streams := range s.stripes[i][tenant] {
 			for _, stream := range streams {
-				fn(tenant, partition, stream)
+				if withinActiveWindow(stream.lastSeenAt) {
+					fn(tenant, partition, stream)
+				}
 			}
 		}
 	})
@@ -125,11 +158,10 @@ func (s *usageStore) update(tenant string, metadata *proto.StreamMetadata, seenA
 
 func (s *usageStore) updateBulk(tenant string, streams []*proto.StreamMetadata, lastSeenAt time.Time, cond condFunc) ([]*proto.StreamMetadata, []*proto.StreamMetadata) {
 	var (
-		// Calculate the cutoff for the window size
-		cutoff   = lastSeenAt.Add(-s.activeWindow).UnixNano()
 		stored   = make([]*proto.StreamMetadata, 0, len(streams))
 		rejected = make([]*proto.StreamMetadata, 0, len(streams))
 	)
+	withinActiveWindow := s.newActiveWindowFunc()
 	s.withLock(tenant, func(i int) {
 		if _, ok := s.stripes[i][tenant]; !ok {
 			s.stripes[i][tenant] = make(tenantUsage)
@@ -147,7 +179,7 @@ func (s *usageStore) updateBulk(tenant string, streams []*proto.StreamMetadata, 
 			// Count as active streams all streams that are not expired.
 			if _, ok := activeStreams[partition]; !ok {
 				for _, stored := range s.stripes[i][tenant][partition] {
-					if stored.lastSeenAt >= cutoff {
+					if withinActiveWindow(stored.lastSeenAt) {
 						activeStreams[partition]++
 					}
 				}
@@ -157,7 +189,7 @@ func (s *usageStore) updateBulk(tenant string, streams []*proto.StreamMetadata, 
 
 			// If the stream is new or expired, check if it exceeds the limit.
 			// If limit is not exceeded and the stream is expired, reset the stream.
-			if !found || (recorded.lastSeenAt < cutoff) {
+			if !found || !withinActiveWindow(recorded.lastSeenAt) {
 				activeStreams[partition]++
 
 				if cond != nil && !cond(float64(activeStreams[partition]), stream) {
@@ -166,8 +198,8 @@ func (s *usageStore) updateBulk(tenant string, streams []*proto.StreamMetadata, 
 				}
 
 				// If the stream is stored and expired, reset the stream
-				if found && recorded.lastSeenAt < cutoff {
-					s.stripes[i][tenant][partition][stream.StreamHash] = streamUsage{hash: stream.StreamHash, lastSeenAt: lastSeenAt.UnixNano()}
+				if found && !withinActiveWindow(recorded.lastSeenAt) {
+					s.stripes[i][tenant][partition][stream.StreamHash] = streamUsage{hash: stream.StreamHash, lastSeenAt: lastSeenAt}
 				}
 			}
 
@@ -182,13 +214,13 @@ func (s *usageStore) updateBulk(tenant string, streams []*proto.StreamMetadata, 
 
 // evict evicts all streams that have not been seen within the window.
 func (s *usageStore) evict() map[string]int {
-	cutoff := s.clock.Now().Add(-s.activeWindow).UnixNano()
 	evicted := make(map[string]int)
+	withinActiveWindow := s.newActiveWindowFunc()
 	s.forEachLock(func(i int) {
 		for tenant, partitions := range s.stripes[i] {
 			for partition, streams := range partitions {
 				for streamHash, stream := range streams {
-					if stream.lastSeenAt < cutoff {
+					if !withinActiveWindow(stream.lastSeenAt) {
 						delete(s.stripes[i][tenant][partition], streamHash)
 						evicted[tenant]++
 					}
@@ -226,7 +258,7 @@ func (s *usageStore) storeStream(i int, tenant string, partition int32, metadata
 	if !ok {
 		s.stripes[i][tenant][partition][metadata.StreamHash] = streamUsage{
 			hash:        metadata.StreamHash,
-			lastSeenAt:  recordTime.UnixNano(),
+			lastSeenAt:  recordTime,
 			totalSize:   metadata.TotalSize,
 			rateBuckets: []rateBucket{{timestamp: bucketStart, size: metadata.TotalSize}},
 		}
@@ -320,17 +352,17 @@ func (s *usageStore) getPartitionForHash(hash uint64) int32 {
 }
 
 // withinActiveWindow returns true if t is within the active window.
-func (s *usageStore) withinActiveWindow(t time.Time) bool {
-	return s.clock.Now().Add(-s.activeWindow).Before(t)
+func (s *usageStore) withinActiveWindow(t time.Time) bool { 
+	return !t.Before(s.clock.Now().Add(-s.activeWindow))
 }
 
-// withinActiveTimeWindowFunc returns a func that returns true if t is within
+// newActiveWindowFunc returns a func that returns true if t is within
 // the active window. It memoizes both the call to s.clock.Now() and the
 // start of the active time window.
-func (s *usageStore) withinActiveWindowFunc() func(t time.Time) bool {
+func (s *usageStore) newActiveWindowFunc() func(t time.Time) bool {
 	activeWindowStart := s.clock.Now().Add(-s.activeWindow)
 	return func(t time.Time) bool {
-		return activeWindowStart.Before(t)
+		return !t.Before(activeWindowStart)
 	}
 }
 

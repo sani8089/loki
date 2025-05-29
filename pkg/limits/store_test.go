@@ -18,7 +18,7 @@ func TestUsageStore_All(t *testing.T) {
 	// Create 10 streams. Since we use i as the hash, we can expect the
 	// streams to be sharded over all 10 partitions.
 	for i := 0; i < 10; i++ {
-		s.set("tenant", streamUsage{hash: uint64(i)})
+		s.set("tenant", streamUsage{hash: uint64(i), lastSeenAt: clock.Now()})
 	}
 	// Check that we can iterate all stored streams.
 	expected := []uint64{0x0, 0x1, 0x2, 0x3, 0x4, 0x5, 0x6, 0x7, 0x8, 0x9}
@@ -41,7 +41,7 @@ func TestUsageStore_ForTenant(t *testing.T) {
 		if i >= 5 {
 			tenant = "tenant2"
 		}
-		s.set(tenant, streamUsage{hash: uint64(i)})
+		s.set(tenant, streamUsage{hash: uint64(i), lastSeenAt: clock.Now()})
 	}
 	// Check we can iterate just the streams for each tenant.
 	expected1 := []uint64{0x0, 0x1, 0x2, 0x3, 0x4}
@@ -66,8 +66,8 @@ func TestStoreUpdate(t *testing.T) {
 		StreamHash: 0x1,
 		TotalSize:  100,
 	}
-	// Metadata outside the active time window is rejected.
-	time1 := clock.Now().Add(-DefaultActiveWindow)
+	// Metadata outside the active time window should return an error.
+	time1 := clock.Now().Add(-DefaultActiveWindow-1)
 	require.EqualError(t, s.update("tenant1", metadata, time1), "outside active time window")
 	// Metadata within the active time window is accepted.
 	time2 := clock.Now()
@@ -193,13 +193,13 @@ func TestUsageStore_Evict(t *testing.T) {
 	s := newUsageStore(DefaultActiveWindow, DefaultRateWindow, DefaultBucketSize, 1)
 	clock := quartz.NewMock(t)
 	s.clock = clock
-	s1 := streamUsage{hash: 0x1, lastSeenAt: clock.Now().UnixNano()}
+	s1 := streamUsage{hash: 0x1, lastSeenAt: clock.Now()}
 	s.set("tenant1", s1)
-	s2 := streamUsage{hash: 0x2, lastSeenAt: clock.Now().Add(-121 * time.Minute).UnixNano()}
+	s2 := streamUsage{hash: 0x2, lastSeenAt: clock.Now().Add(-121 * time.Minute)}
 	s.set("tenant1", s2)
-	s3 := streamUsage{hash: 0x3, lastSeenAt: clock.Now().UnixNano()}
+	s3 := streamUsage{hash: 0x3, lastSeenAt: clock.Now()}
 	s.set("tenant2", s3)
-	s4 := streamUsage{hash: 0x4, lastSeenAt: clock.Now().Add(-59 * time.Minute).UnixNano()}
+	s4 := streamUsage{hash: 0x4, lastSeenAt: clock.Now().Add(-59 * time.Minute)}
 	s.set("tenant2", s4)
 	// Evict all streams older than the window size.
 	s.evict()
@@ -227,7 +227,7 @@ func TestUsageStore_EvictPartitions(t *testing.T) {
 	// Create 10 streams. Since we use i as the hash, we can expect the
 	// streams to be sharded over all 10 partitions.
 	for i := 0; i < 10; i++ {
-		s.set("tenant", streamUsage{hash: uint64(i)})
+		s.set("tenant", streamUsage{hash: uint64(i), lastSeenAt: clock.Now()})
 	}
 	// Evict the first 5 partitions.
 	s.evictPartitions([]int32{0, 1, 2, 3, 4})
