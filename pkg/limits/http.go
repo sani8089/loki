@@ -10,9 +10,9 @@ import (
 )
 
 type httpTenantLimitsResponse struct {
-	Tenant        string  `json:"tenant"`
-	ActiveStreams uint64  `json:"activeStreams"`
-	Rate          float64 `json:"rate"`
+	Tenant  string  `json:"tenant"`
+	Streams uint64  `json:"streams"`
+	Rate    float64 `json:"rate"`
 }
 
 // ServeHTTP implements the http.Handler interface.
@@ -23,49 +23,29 @@ func (s *Service) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid tenant", http.StatusBadRequest)
 		return
 	}
-
-	// Calculate stream counts and status per tenant
-	var (
-		activeStreams uint64
-		totalSize     uint64
-		response      httpTenantLimitsResponse
-	)
-
+	var streams, totalBuckets uint64
 	s.usage.iterTenant(tenant, func(_ string, _ int32, stream streamUsage) {
-		activeStreams++
+		streams++
 		for _, bucket := range stream.rateBuckets {
-			totalSize += bucket.size
+			totalBuckets += bucket.size
 		}
 	})
-
-	// Calculate rate using only data from within the rate window
-	calculatedRate := float64(totalSize) / s.cfg.ActiveWindow.Seconds()
-
-	if activeStreams > 0 {
-		response = httpTenantLimitsResponse{
-			Tenant:        tenant,
-			ActiveStreams: activeStreams,
-			Rate:          calculatedRate,
-		}
-	} else {
-		// If no active streams found, return zeros
-		response = httpTenantLimitsResponse{
-			Tenant:        tenant,
-			ActiveStreams: 0,
-			Rate:          0,
-		}
-	}
+	rate := float64(totalBuckets) / s.cfg.ActiveWindow.Seconds()
 
 	// Log the calculated values for debugging
 	level.Debug(s.logger).Log(
 		"msg", "HTTP endpoint calculated stream usage",
 		"tenant", tenant,
-		"active_streams", activeStreams,
-		"total_size", util.HumanizeBytes(totalSize),
+		"streams", streams,
+		"total_buckets", util.HumanizeBytes(totalBuckets),
 		"rate_window_seconds", s.cfg.RateWindow.Seconds(),
-		"calculated_rate", util.HumanizeBytes(uint64(calculatedRate)),
+		"rate", util.HumanizeBytes(uint64(rate)),
 	)
 
 	// Use util.WriteJSONResponse to write the JSON response
-	util.WriteJSONResponse(w, response)
+	util.WriteJSONResponse(w, httpTenantLimitsResponse{
+		Tenant:  tenant,
+		Streams: streams,
+		Rate:    rate,
+	})
 }
