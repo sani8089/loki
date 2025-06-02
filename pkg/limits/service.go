@@ -41,7 +41,7 @@ type Service struct {
 	partitionLifecycler *partitionLifecycler
 	consumer            *consumer
 	producer            *producer
-	usage               *usageStore
+	stats               *statsStore
 	logger              log.Logger
 
 	// Metrics.
@@ -70,9 +70,9 @@ func New(cfg Config, limits Limits, logger log.Logger, reg prometheus.Registerer
 	if err != nil {
 		return nil, fmt.Errorf("failed to create partition manager: %w", err)
 	}
-	s.usage, err = newUsageStore(cfg.ActiveWindow, cfg.RateWindow, cfg.BucketSize, cfg.NumPartitions, reg)
+	s.stats, err = newStatsStore(cfg.ActiveWindow, cfg.RateWindow, cfg.BucketSize, cfg.NumPartitions, reg)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create usage store: %w", err)
+		return nil, fmt.Errorf("failed to create stats store: %w", err)
 	}
 	// Initialize lifecycler
 	s.lifecycler, err = ring.NewLifecycler(cfg.LifecyclerConfig, s, RingName, RingKey, true, logger, reg)
@@ -99,7 +99,7 @@ func New(cfg Config, limits Limits, logger log.Logger, reg prometheus.Registerer
 	s.partitionLifecycler = newPartitionLifecycler(
 		s.partitionManager,
 		offsetManager,
-		s.usage,
+		s.stats,
 		cfg.ActiveWindow,
 		logger,
 	)
@@ -122,7 +122,7 @@ func New(cfg Config, limits Limits, logger log.Logger, reg prometheus.Registerer
 	s.consumer = newConsumer(
 		s.kafkaReader,
 		s.partitionManager,
-		s.usage,
+		s.stats,
 		newOffsetReadinessCheck(s.partitionManager),
 		cfg.LifecyclerConfig.Zone,
 		logger,
@@ -138,7 +138,7 @@ func New(cfg Config, limits Limits, logger log.Logger, reg prometheus.Registerer
 	)
 	s.limitsChecker = newLimitsChecker(
 		limits,
-		s.usage,
+		s.stats,
 		s.producer,
 		s.partitionManager,
 		s.cfg.NumPartitions,
@@ -229,7 +229,7 @@ func (s *Service) evictOldStreamsPeriodic(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			evicted := s.usage.Evict()
+			evicted := s.stats.Evict()
 			for tenant, numEvicted := range evicted {
 				s.streamEvictionsTotal.WithLabelValues(tenant).Add(float64(numEvicted))
 			}

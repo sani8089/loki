@@ -21,7 +21,7 @@ type Limits interface {
 
 type limitsChecker struct {
 	limits           Limits
-	store            *usageStore
+	store            *statsStore
 	producer         *producer
 	partitionManager *partitionManager
 	numPartitions    int
@@ -34,7 +34,7 @@ type limitsChecker struct {
 	clock quartz.Clock
 }
 
-func newLimitsChecker(limits Limits, store *usageStore, producer *producer, partitionManager *partitionManager, numPartitions int, logger log.Logger, reg prometheus.Registerer) *limitsChecker {
+func newLimitsChecker(limits Limits, store *statsStore, producer *producer, partitionManager *partitionManager, numPartitions int, logger log.Logger, reg prometheus.Registerer) *limitsChecker {
 	return &limitsChecker{
 		limits:           limits,
 		store:            store,
@@ -51,31 +51,53 @@ func newLimitsChecker(limits Limits, store *usageStore, producer *producer, part
 }
 
 func (c *limitsChecker) ExceedsLimits(ctx context.Context, req *proto.ExceedsLimitsRequest) (*proto.ExceedsLimitsResponse, error) {
-	streams := req.Streams
-	valid := 0
-	for _, stream := range streams {
-		partition := int32(stream.StreamHash % uint64(c.numPartitions))
-
-		// TODO(periklis): Do we need to report this as an error to the frontend?
-		if assigned := c.partitionManager.Has(partition); !assigned {
-			level.Warn(c.logger).Log("msg", "stream assigned partition not owned by instance", "stream_hash", stream.StreamHash, "partition", partition)
-			continue
+	var (
+		maxStreams          = c.limits.MaxGlobalStreamsPerUser(req.Tenant)
+		partitionMaxStreams = maxStreams / c.numPartitions
+		accepted            = make([]*proto.StreamMetadata, 0, len(req.Streams))
+		rejected            = make([]*proto.StreamMetadata, 0, len(req.Streams))
+	)
+	c.store.ForTenant(req.Tenant, func(e tenantStatsEntry) {
+		for _, metadata := range req.Streams {
+			partition := int32(metadata.StreamHash % uint64(c.numPartitions))
+			// TODO(grobinson): What to do in this case?
+			if !c.partitionManager.Has(partition) {
+				level.Warn(c.logger).Log(
+					"msg",
+					"received stream for partition not assigned to us, dropping it",
+					"stream",
+					metadata.StreamHash,
+					"partition",
+					partition,
+				)
+				continue
+			}
+			stats, ok := e.Get(metadata.StreamHash)
+			if !ok {
+				// if ok {
+				// 	// The stream has expired, delete it so it doesn't count
+				// 	// towards the active streams.
+				// 	e.Delete(stream.StreamHash)
+				// }
+				// Get the total number of streams, including expired
+				// streams. While we would like to count just the number of
+				// active streams, this would mean iterating all streams
+				// in the partition which is O(N) instead of O(1). Instead,
+				// we accept that expired streams will be counted towards the
+				// limit until evicted.
+				if e.CountPartitionStreams(partition) >= partitionMaxStreams {
+					rejected = append(rejected, metadata)
+					continue
+				}
+				accepted = append(accepted, metadata)
+				e.Update(metadata, seenAt)
+			}
 		}
-
-		streams[valid] = stream
-		valid++
-	}
-	streams = streams[:valid]
-
-	accepted, rejected, err := c.store.UpdateCond(req.Tenant, streams, c.clock.Now(), c.limits)
-	if err != nil {
-		return nil, err
-	}
+	})
 
 	var ingestedBytes uint64
 	for _, stream := range accepted {
 		ingestedBytes += stream.TotalSize
-
 		err := c.producer.Produce(context.WithoutCancel(ctx), req.Tenant, stream)
 		if err != nil {
 			level.Error(c.logger).Log("msg", "failed to send streams", "error", err)

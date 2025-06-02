@@ -24,17 +24,17 @@ func (s *Service) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var streams, sumBuckets uint64
-	s.usage.IterTenant(tenant, func(_ string, _ int32, stream streamUsage) {
+	for stream := range s.stats.AllForTenant(tenant) {
 		streams++
 		for _, bucket := range stream.rateBuckets {
 			sumBuckets += bucket.size
 		}
-	})
+	}
 	rate := float64(sumBuckets) / s.cfg.ActiveWindow.Seconds()
 
 	// Log the calculated values for debugging
 	level.Debug(s.logger).Log(
-		"msg", "HTTP endpoint calculated stream usage",
+		"msg", "HTTP endpoint calculated stream stats",
 		"tenant", tenant,
 		"streams", streams,
 		"sum_buckets", util.HumanizeBytes(sumBuckets),

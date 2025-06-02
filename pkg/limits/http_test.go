@@ -17,10 +17,10 @@ import (
 
 func TestIngestLimits_ServeHTTP(t *testing.T) {
 	clock := quartz.NewMock(t)
-	store, err := newUsageStore(DefaultActiveWindow, DefaultRateWindow, DefaultBucketSize, 1, prometheus.NewRegistry())
+	stats, err := newStatsStore(DefaultActiveWindow, DefaultRateWindow, DefaultBucketSize, 1, prometheus.NewRegistry())
 	require.NoError(t, err)
-	store.clock = clock
-	store.setForTests("tenant1", streamUsage{
+	stats.clock = clock
+	stats.setForTests("tenant1", streamStats{
 		hash:      0x1,
 		totalSize: 100,
 		rateBuckets: []rateBucket{{
@@ -35,7 +35,7 @@ func TestIngestLimits_ServeHTTP(t *testing.T) {
 			RateWindow:   time.Minute,
 			BucketSize:   30 * time.Second,
 		},
-		usage:  store,
+		stats:  stats,
 		logger: log.NewNopLogger(),
 	}
 
@@ -45,7 +45,7 @@ func TestIngestLimits_ServeHTTP(t *testing.T) {
 	ts := httptest.NewServer(r)
 	defer ts.Close()
 
-	// Known tenant should return current usage.
+	// Known tenant should return current stats.
 	resp, err := http.Get(ts.URL + "/tenant1")
 	require.NoError(t, err)
 	defer resp.Body.Close()
@@ -59,7 +59,7 @@ func TestIngestLimits_ServeHTTP(t *testing.T) {
 	require.Greater(t, data.Rate, 0.0)
 	require.Less(t, data.Rate, 1.0)
 
-	// Unknown tenant should have no usage.
+	// Unknown tenant should have no stats.
 	resp, err = http.Get(ts.URL + "/tenant2")
 	require.NoError(t, err)
 	defer resp.Body.Close()

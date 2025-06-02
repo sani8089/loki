@@ -436,7 +436,7 @@ func TestRingGatherer_ExceedsLimits(t *testing.T) {
 	}
 }
 
-func TestRingStreamUsageGatherer_GetZoneAwarePartitionConsumers(t *testing.T) {
+func TestRingstreamStatsGatherer_GetZoneAwarePartitionConsumers(t *testing.T) {
 	tests := []struct {
 		name                              string
 		instances                         []ring.InstanceDesc
@@ -597,7 +597,7 @@ func TestRingStreamUsageGatherer_GetZoneAwarePartitionConsumers(t *testing.T) {
 	}
 }
 
-func TestRingStreamUsageGatherer_GetPartitionConsumers(t *testing.T) {
+func TestRingstreamStatsGatherer_GetPartitionConsumers(t *testing.T) {
 	tests := []struct {
 		name string
 		// Instances contains the complete set of instances that should be mocked.
@@ -734,7 +734,7 @@ func TestRingStreamUsageGatherer_GetPartitionConsumers(t *testing.T) {
 	}
 }
 
-func TestRingStreamUsageGatherer_GetPartitionConsumers_Caching(t *testing.T) {
+func TestRingstreamStatsGatherer_GetPartitionConsumers_Caching(t *testing.T) {
 	// Set up the mock clients.
 	req0 := proto.GetAssignedPartitionsResponse{
 		AssignedPartitions: map[int32]int64{

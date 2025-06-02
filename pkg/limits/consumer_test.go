@@ -49,9 +49,9 @@ func TestConsumer_ProcessRecords(t *testing.T) {
 		require.NoError(t, err)
 		m.Assign([]int32{1})
 		m.SetReplaying(1, 1000)
-		// Create a usage store, we will use this to check if the record
+		// Create a stats store, we will use this to check if the record
 		// was stored.
-		u, err := newUsageStore(DefaultActiveWindow, DefaultRateWindow, DefaultBucketSize, 1, reg)
+		u, err := newStatsStore(DefaultActiveWindow, DefaultRateWindow, DefaultBucketSize, 1, reg)
 		require.NoError(t, err)
 		u.clock = clock
 		c := newConsumer(&kafka, m, u, newOffsetReadinessCheck(m), "zone1",
@@ -60,7 +60,9 @@ func TestConsumer_ProcessRecords(t *testing.T) {
 		require.NoError(t, c.pollFetches(ctx))
 		// Check that the record was stored.
 		var n int
-		u.Iter(func(_ string, _ int32, _ streamUsage) { n++ })
+		for range u.All() {
+			n++
+		}
 		require.Equal(t, 1, n)
 	})
 
@@ -99,9 +101,9 @@ func TestConsumer_ProcessRecords(t *testing.T) {
 		require.NoError(t, err)
 		m.Assign([]int32{1})
 		m.SetReady(1)
-		// Create a usage store, we will use this to check if the record
+		// Create a stats store, we will use this to check if the record
 		// was discarded.
-		u, err := newUsageStore(DefaultActiveWindow, DefaultRateWindow, DefaultBucketSize, 1, reg)
+		u, err := newStatsStore(DefaultActiveWindow, DefaultRateWindow, DefaultBucketSize, 1, reg)
 		require.NoError(t, err)
 		u.clock = clock
 		c := newConsumer(&kafka, m, u, newOffsetReadinessCheck(m), "zone1",
@@ -110,7 +112,9 @@ func TestConsumer_ProcessRecords(t *testing.T) {
 		require.NoError(t, c.pollFetches(ctx))
 		// Check that the record was discarded.
 		var n int
-		u.Iter(func(_ string, _ int32, _ streamUsage) { n++ })
+		for range u.All() {
+			n++
+		}
 		require.Equal(t, 0, n)
 	})
 }
@@ -179,8 +183,8 @@ func TestConsumer_ReadinessCheck(t *testing.T) {
 	// The partition should be marked ready when the second record
 	// has been consumed.
 	m.SetReplaying(1, 2)
-	// We don't need the usage store for this test.
-	u, err := newUsageStore(DefaultActiveWindow, DefaultRateWindow, DefaultBucketSize, 1, reg)
+	// We don't need the stats store for this test.
+	u, err := newStatsStore(DefaultActiveWindow, DefaultRateWindow, DefaultBucketSize, 1, reg)
 	require.NoError(t, err)
 	u.clock = clock
 	c := newConsumer(&kafka, m, u, newOffsetReadinessCheck(m), "zone1",
@@ -195,7 +199,9 @@ func TestConsumer_ReadinessCheck(t *testing.T) {
 	require.Equal(t, partitionReplaying, state)
 	// Check that the record was stored.
 	var n int
-	u.Iter(func(_ string, _ int32, _ streamUsage) { n++ })
+	for range u.All() {
+		n++
+	}
 	require.Equal(t, 1, n)
 	// The second poll should fetch the second (and last) record.
 	require.NoError(t, c.pollFetches(ctx))
@@ -206,6 +212,8 @@ func TestConsumer_ReadinessCheck(t *testing.T) {
 	require.Equal(t, partitionReady, state)
 	// Check that the record was stored.
 	n = 0
-	u.Iter(func(_ string, _ int32, _ streamUsage) { n++ })
+	for range u.All() {
+		n++
+	}
 	require.Equal(t, 2, n)
 }

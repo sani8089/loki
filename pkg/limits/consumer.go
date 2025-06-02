@@ -27,7 +27,7 @@ type kafkaConsumer interface {
 type consumer struct {
 	client           kafkaConsumer
 	partitionManager *partitionManager
-	usage            *usageStore
+	stats            *statsStore
 	// readinessCheck checks if a waiting or replaying partition can be
 	// switched to ready.
 	readinessCheck partitionReadinessCheck
@@ -49,7 +49,7 @@ type consumer struct {
 func newConsumer(
 	client kafkaConsumer,
 	partitionManager *partitionManager,
-	usage *usageStore,
+	stats *statsStore,
 	readinessCheck partitionReadinessCheck,
 	zone string,
 	logger log.Logger,
@@ -58,7 +58,7 @@ func newConsumer(
 	return &consumer{
 		client:           client,
 		partitionManager: partitionManager,
-		usage:            usage,
+		stats:            stats,
 		readinessCheck:   readinessCheck,
 		zone:             zone,
 		logger:           logger,
@@ -176,7 +176,7 @@ func (c *consumer) processRecord(_ context.Context, state partitionState, r *kgo
 		c.recordsDiscarded.Inc()
 		return nil
 	}
-	if err := c.usage.Update(s.Tenant, s.Metadata, r.Timestamp); err != nil {
+	if err := c.stats.Update(s.Tenant, s.Metadata, r.Timestamp); err != nil {
 		if errors.Is(err, errOutsideActiveWindow) {
 			c.recordsDiscarded.Inc()
 		} else {

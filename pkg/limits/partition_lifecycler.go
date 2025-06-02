@@ -17,7 +17,7 @@ import (
 type partitionLifecycler struct {
 	partitionManager *partitionManager
 	offsetManager    kafka_partition.OffsetManager
-	usage            *usageStore
+	stats            *statsStore
 	activeWindow     time.Duration
 	logger           log.Logger
 
@@ -29,14 +29,14 @@ type partitionLifecycler struct {
 func newPartitionLifecycler(
 	partitionManager *partitionManager,
 	offsetManager kafka_partition.OffsetManager,
-	usage *usageStore,
+	stats *statsStore,
 	activeWindow time.Duration,
 	logger log.Logger,
 ) *partitionLifecycler {
 	return &partitionLifecycler{
 		partitionManager: partitionManager,
 		offsetManager:    offsetManager,
-		usage:            usage,
+		stats:            stats,
 		activeWindow:     activeWindow,
 		logger:           logger,
 		clock:            quartz.NewReal(),
@@ -69,7 +69,7 @@ func (l *partitionLifecycler) Revoke(_ context.Context, _ *kgo.Client, topics ma
 	// TODO(grobinson): Figure out what to do if this is not the case.
 	for _, partitions := range topics {
 		l.partitionManager.Revoke(partitions)
-		l.usage.EvictPartitions(partitions)
+		l.stats.EvictPartitions(partitions)
 		return
 	}
 }
