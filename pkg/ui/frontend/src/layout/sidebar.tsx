@@ -11,6 +11,7 @@ import {
   LayoutDashboard,
   Users,
   BookOpen,
+  Fish,
 } from "lucide-react";
 import { useCluster } from "@/contexts/use-cluster";
 import { getAvailableRings } from "@/lib/ring-utils";
@@ -135,6 +136,12 @@ const baseNavItems: NavItem[] = [
     title: "Rules",
     url: "/rules",
     icon: <GaugeCircle className="h-4 w-4" />,
+    items: [],
+  },
+  {
+    title: "Goldfish",
+    url: "/goldfish",
+    icon: <Fish className="h-4 w-4" />,
     items: [],
   },
   {
