@@ -60,7 +60,7 @@ func TestConsumer_ProcessRecords(t *testing.T) {
 		require.NoError(t, c.pollFetches(ctx))
 		// Check that the record was stored.
 		var n int
-		for range u.All() {
+		for range u.ActiveStreams() {
 			n++
 		}
 		require.Equal(t, 1, n)
@@ -112,7 +112,7 @@ func TestConsumer_ProcessRecords(t *testing.T) {
 		require.NoError(t, c.pollFetches(ctx))
 		// Check that the record was discarded.
 		var n int
-		for range u.All() {
+		for range u.ActiveStreams() {
 			n++
 		}
 		require.Equal(t, 0, n)
@@ -199,7 +199,7 @@ func TestConsumer_ReadinessCheck(t *testing.T) {
 	require.Equal(t, partitionReplaying, state)
 	// Check that the record was stored.
 	var n int
-	for range u.All() {
+	for range u.ActiveStreams() {
 		n++
 	}
 	require.Equal(t, 1, n)
@@ -212,7 +212,7 @@ func TestConsumer_ReadinessCheck(t *testing.T) {
 	require.Equal(t, partitionReady, state)
 	// Check that the record was stored.
 	n = 0
-	for range u.All() {
+	for range u.ActiveStreams() {
 		n++
 	}
 	require.Equal(t, 2, n)

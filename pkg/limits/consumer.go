@@ -176,7 +176,12 @@ func (c *consumer) processRecord(_ context.Context, state partitionState, r *kgo
 		c.recordsDiscarded.Inc()
 		return nil
 	}
-	if err := c.stats.Update(s.Tenant, s.Metadata, r.Timestamp); err != nil {
+	if err := c.stats.Update(
+		s.Tenant,
+		s.Metadata.StreamHash,
+		s.Metadata.TotalSize,
+		r.Timestamp,
+	); err != nil {
 		if errors.Is(err, errOutsideActiveWindow) {
 			c.recordsDiscarded.Inc()
 		} else {

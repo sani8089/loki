@@ -24,12 +24,14 @@ func (s *Service) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var streams, sumBuckets uint64
-	for stream := range s.stats.AllForTenant(tenant) {
-		streams++
-		for _, bucket := range stream.rateBuckets {
-			sumBuckets += bucket.size
+	s.stats.WithTenantRead(tenant, func(ts *tenantStatsReadStore) {
+		for _, stream := range ts.ActiveStreams() {
+			streams++
+			for _, bucket := range stream.rateBuckets {
+				sumBuckets += bucket.size
+			}
 		}
-	}
+	})
 	rate := float64(sumBuckets) / s.cfg.ActiveWindow.Seconds()
 
 	// Log the calculated values for debugging

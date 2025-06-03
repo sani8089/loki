@@ -138,10 +138,10 @@ func New(cfg Config, limits Limits, logger log.Logger, reg prometheus.Registerer
 	)
 	s.limitsChecker = newLimitsChecker(
 		limits,
-		s.stats,
-		s.producer,
 		s.partitionManager,
 		s.cfg.NumPartitions,
+		s.producer,
+		s.stats,
 		logger,
 		reg,
 	)
