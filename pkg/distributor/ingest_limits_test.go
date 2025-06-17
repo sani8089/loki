@@ -20,13 +20,13 @@ import (
 type mockIngestLimitsFrontendClient struct {
 	t               *testing.T
 	calls           atomic.Uint64
-	expectedRequest *proto.ExceedsLimitsRequest
-	response        *proto.ExceedsLimitsResponse
+	expectedRequest *proto.CheckLimitsRequest
+	response        *proto.CheckLimitsResponse
 	responseErr     error
 }
 
 // Implements the ingestLimitsFrontendClient interface.
-func (c *mockIngestLimitsFrontendClient) ExceedsLimits(_ context.Context, r *proto.ExceedsLimitsRequest) (*proto.ExceedsLimitsResponse, error) {
+func (c *mockIngestLimitsFrontendClient) CheckLimits(_ context.Context, r *proto.CheckLimitsRequest) (*proto.CheckLimitsResponse, error) {
 	c.calls.Add(1)
 	if c.expectedRequest != nil {
 		require.Equal(c.t, c.expectedRequest, r)
@@ -45,8 +45,8 @@ func TestIngestLimits_EnforceLimits(t *testing.T) {
 		name            string
 		tenant          string
 		streams         []KeyedStream
-		expectedRequest *proto.ExceedsLimitsRequest
-		response        *proto.ExceedsLimitsResponse
+		expectedRequest *proto.CheckLimitsRequest
+		response        *proto.CheckLimitsResponse
 		responseErr     error
 		expectedStreams []KeyedStream
 		expectedErr     string
@@ -83,7 +83,7 @@ func TestIngestLimits_EnforceLimits(t *testing.T) {
 				}},
 			},
 		}},
-		expectedRequest: &proto.ExceedsLimitsRequest{
+		expectedRequest: &proto.CheckLimitsRequest{
 			Tenant: "test",
 			Streams: []*proto.StreamMetadata{{
 				StreamHash: 1,
@@ -102,14 +102,14 @@ func TestIngestLimits_EnforceLimits(t *testing.T) {
 			HashKey:        1000, // Should not be used.
 			HashKeyNoShard: 1,
 		}},
-		expectedRequest: &proto.ExceedsLimitsRequest{
+		expectedRequest: &proto.CheckLimitsRequest{
 			Tenant: "test",
 			Streams: []*proto.StreamMetadata{{
 				StreamHash: 1,
 			}},
 		},
-		response: &proto.ExceedsLimitsResponse{
-			Results: []*proto.ExceedsLimitsResult{{
+		response: &proto.CheckLimitsResponse{
+			Results: []*proto.CheckLimitsResult{{
 				StreamHash: 1,
 				Reason:     uint32(limits.ReasonMaxStreams),
 			}},
@@ -125,7 +125,7 @@ func TestIngestLimits_EnforceLimits(t *testing.T) {
 			HashKey:        2000, // Should not be used.
 			HashKeyNoShard: 2,
 		}},
-		expectedRequest: &proto.ExceedsLimitsRequest{
+		expectedRequest: &proto.CheckLimitsRequest{
 			Tenant: "test",
 			Streams: []*proto.StreamMetadata{{
 				StreamHash: 1,
@@ -133,8 +133,8 @@ func TestIngestLimits_EnforceLimits(t *testing.T) {
 				StreamHash: 2,
 			}},
 		},
-		response: &proto.ExceedsLimitsResponse{
-			Results: []*proto.ExceedsLimitsResult{{
+		response: &proto.CheckLimitsResponse{
+			Results: []*proto.CheckLimitsResult{{
 				StreamHash: 1,
 				Reason:     uint32(limits.ReasonMaxStreams),
 			}},
@@ -153,7 +153,7 @@ func TestIngestLimits_EnforceLimits(t *testing.T) {
 			HashKey:        2000, // Should not be used.
 			HashKeyNoShard: 2,
 		}},
-		expectedRequest: &proto.ExceedsLimitsRequest{
+		expectedRequest: &proto.CheckLimitsRequest{
 			Tenant: "test",
 			Streams: []*proto.StreamMetadata{{
 				StreamHash: 1,
@@ -161,8 +161,8 @@ func TestIngestLimits_EnforceLimits(t *testing.T) {
 				StreamHash: 2,
 			}},
 		},
-		response: &proto.ExceedsLimitsResponse{
-			Results: []*proto.ExceedsLimitsResult{},
+		response: &proto.CheckLimitsResponse{
+			Results: []*proto.CheckLimitsResult{},
 		},
 		expectedStreams: []KeyedStream{{
 			HashKey:        1000, // Should not be used.
@@ -197,15 +197,15 @@ func TestIngestLimits_EnforceLimits(t *testing.T) {
 	}
 }
 
-func TestIngestLimits_ExceedsLimits(t *testing.T) {
+func TestIngestLimits_CheckLimits(t *testing.T) {
 	tests := []struct {
 		name            string
 		tenant          string
 		streams         []KeyedStream
-		expectedRequest *proto.ExceedsLimitsRequest
-		response        *proto.ExceedsLimitsResponse
+		expectedRequest *proto.CheckLimitsRequest
+		response        *proto.CheckLimitsResponse
 		responseErr     error
-		expectedResult  []*proto.ExceedsLimitsResult
+		expectedResult  []*proto.CheckLimitsResult
 		expectedErr     string
 	}{{
 		name:   "error should be returned if limits cannot be checked",
@@ -213,7 +213,7 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 		streams: []KeyedStream{{
 			HashKeyNoShard: 1,
 		}},
-		expectedRequest: &proto.ExceedsLimitsRequest{
+		expectedRequest: &proto.CheckLimitsRequest{
 			Tenant: "test",
 			Streams: []*proto.StreamMetadata{{
 				StreamHash: 1,
@@ -227,19 +227,19 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 		streams: []KeyedStream{{
 			HashKeyNoShard: 1,
 		}},
-		expectedRequest: &proto.ExceedsLimitsRequest{
+		expectedRequest: &proto.CheckLimitsRequest{
 			Tenant: "test",
 			Streams: []*proto.StreamMetadata{{
 				StreamHash: 1,
 			}},
 		},
-		response: &proto.ExceedsLimitsResponse{
-			Results: []*proto.ExceedsLimitsResult{{
+		response: &proto.CheckLimitsResponse{
+			Results: []*proto.CheckLimitsResult{{
 				StreamHash: 1,
 				Reason:     uint32(limits.ReasonMaxStreams),
 			}},
 		},
-		expectedResult: []*proto.ExceedsLimitsResult{{
+		expectedResult: []*proto.CheckLimitsResult{{
 			StreamHash: 1,
 			Reason:     uint32(limits.ReasonMaxStreams),
 		}},
@@ -249,16 +249,16 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 		streams: []KeyedStream{{
 			HashKeyNoShard: 1,
 		}},
-		expectedRequest: &proto.ExceedsLimitsRequest{
+		expectedRequest: &proto.CheckLimitsRequest{
 			Tenant: "test",
 			Streams: []*proto.StreamMetadata{{
 				StreamHash: 1,
 			}},
 		},
-		response: &proto.ExceedsLimitsResponse{
-			Results: []*proto.ExceedsLimitsResult{},
+		response: &proto.CheckLimitsResponse{
+			Results: []*proto.CheckLimitsResult{},
 		},
-		expectedResult: []*proto.ExceedsLimitsResult{},
+		expectedResult: []*proto.CheckLimitsResult{},
 	}}
 
 	for _, test := range tests {
@@ -272,7 +272,7 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 			l := newIngestLimits(&mockClient, prometheus.NewRegistry())
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
-			res, err := l.ExceedsLimits(ctx, test.tenant, test.streams)
+			res, err := l.CheckLimits(ctx, test.tenant, test.streams)
 			if test.expectedErr != "" {
 				require.EqualError(t, err, test.expectedErr)
 				require.Nil(t, res)

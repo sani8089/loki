@@ -2397,8 +2397,8 @@ func TestDistributor_PushIngestLimits(t *testing.T) {
 		tenant                    string
 		streams                   logproto.PushRequest
 		expectedLimitsCalls       uint64
-		expectedLimitsRequest     *limitsproto.ExceedsLimitsRequest
-		limitsResponse            *limitsproto.ExceedsLimitsResponse
+		expectedLimitsRequest     *limitsproto.CheckLimitsRequest
+		limitsResponse            *limitsproto.CheckLimitsResponse
 		limitsResponseErr         error
 		expectedErr               string
 	}{{
@@ -2425,15 +2425,15 @@ func TestDistributor_PushIngestLimits(t *testing.T) {
 			}},
 		},
 		expectedLimitsCalls: 1,
-		expectedLimitsRequest: &limitsproto.ExceedsLimitsRequest{
+		expectedLimitsRequest: &limitsproto.CheckLimitsRequest{
 			Tenant: "test",
 			Streams: []*limitsproto.StreamMetadata{{
 				StreamHash: 0x90eb45def17f924,
 				TotalSize:  0x3,
 			}},
 		},
-		limitsResponse: &limitsproto.ExceedsLimitsResponse{
-			Results: []*limitsproto.ExceedsLimitsResult{},
+		limitsResponse: &limitsproto.CheckLimitsResponse{
+			Results: []*limitsproto.CheckLimitsResult{},
 		},
 	}, {
 		name:                "max stream limit is exceeded",
@@ -2449,15 +2449,15 @@ func TestDistributor_PushIngestLimits(t *testing.T) {
 			}},
 		},
 		expectedLimitsCalls: 1,
-		expectedLimitsRequest: &limitsproto.ExceedsLimitsRequest{
+		expectedLimitsRequest: &limitsproto.CheckLimitsRequest{
 			Tenant: "test",
 			Streams: []*limitsproto.StreamMetadata{{
 				StreamHash: 0x90eb45def17f924,
 				TotalSize:  0x3,
 			}},
 		},
-		limitsResponse: &limitsproto.ExceedsLimitsResponse{
-			Results: []*limitsproto.ExceedsLimitsResult{{
+		limitsResponse: &limitsproto.CheckLimitsResponse{
+			Results: []*limitsproto.CheckLimitsResult{{
 				StreamHash: 0x90eb45def17f924,
 				Reason:     uint32(limits.ReasonMaxStreams),
 			}},
@@ -2483,7 +2483,7 @@ func TestDistributor_PushIngestLimits(t *testing.T) {
 			}},
 		},
 		expectedLimitsCalls: 1,
-		expectedLimitsRequest: &limitsproto.ExceedsLimitsRequest{
+		expectedLimitsRequest: &limitsproto.CheckLimitsRequest{
 			Tenant: "test",
 			Streams: []*limitsproto.StreamMetadata{{
 				StreamHash: 0x90eb45def17f924,
@@ -2493,8 +2493,8 @@ func TestDistributor_PushIngestLimits(t *testing.T) {
 				TotalSize:  0x3,
 			}},
 		},
-		limitsResponse: &limitsproto.ExceedsLimitsResponse{
-			Results: []*limitsproto.ExceedsLimitsResult{{
+		limitsResponse: &limitsproto.CheckLimitsResponse{
+			Results: []*limitsproto.CheckLimitsResult{{
 				StreamHash: 1,
 				Reason:     uint32(limits.ReasonMaxStreams),
 			}},
@@ -2514,15 +2514,15 @@ func TestDistributor_PushIngestLimits(t *testing.T) {
 			}},
 		},
 		expectedLimitsCalls: 1,
-		expectedLimitsRequest: &limitsproto.ExceedsLimitsRequest{
+		expectedLimitsRequest: &limitsproto.CheckLimitsRequest{
 			Tenant: "test",
 			Streams: []*limitsproto.StreamMetadata{{
 				StreamHash: 0x90eb45def17f924,
 				TotalSize:  0x3,
 			}},
 		},
-		limitsResponse: &limitsproto.ExceedsLimitsResponse{
-			Results: []*limitsproto.ExceedsLimitsResult{{
+		limitsResponse: &limitsproto.CheckLimitsResponse{
+			Results: []*limitsproto.CheckLimitsResult{{
 				StreamHash: 1,
 				Reason:     uint32(limits.ReasonMaxStreams),
 			}},
@@ -2541,7 +2541,7 @@ func TestDistributor_PushIngestLimits(t *testing.T) {
 			}},
 		},
 		expectedLimitsCalls: 1,
-		expectedLimitsRequest: &limitsproto.ExceedsLimitsRequest{
+		expectedLimitsRequest: &limitsproto.CheckLimitsRequest{
 			Tenant: "test",
 			Streams: []*limitsproto.StreamMetadata{{
 				StreamHash: 0x90eb45def17f924,

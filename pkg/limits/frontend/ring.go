@@ -71,8 +71,8 @@ func newRingGatherer(
 	}
 }
 
-// ExceedsLimits implements the [exceedsLimitsGatherer] interface.
-func (r *ringGatherer) ExceedsLimits(ctx context.Context, req *proto.ExceedsLimitsRequest) ([]*proto.ExceedsLimitsResponse, error) {
+// CheckLimits implements the [checkLimitsGatherer] interface.
+func (r *ringGatherer) CheckLimits(ctx context.Context, req *proto.CheckLimitsRequest) ([]*proto.CheckLimitsResponse, error) {
 	if len(req.Streams) == 0 {
 		return nil, nil
 	}
@@ -106,13 +106,13 @@ func (r *ringGatherer) ExceedsLimits(ctx context.Context, req *proto.ExceedsLimi
 	// then query the next zone for the remaining streams. We repeat this
 	// process until all streams have been queried or we have exhausted all
 	// zones.
-	responses := make([]*proto.ExceedsLimitsResponse, 0)
+	responses := make([]*proto.CheckLimitsResponse, 0)
 	for _, zone := range zonesToQuery {
 		// All streams been checked against per-tenant limits.
 		if len(streams) == 0 {
 			break
 		}
-		resps, answered, err := r.doExceedsLimitsRPCs(ctx, req.Tenant, streams, zonesPartitions[zone], zone)
+		resps, answered, err := r.doCheckLimitsRPCs(ctx, req.Tenant, streams, zonesPartitions[zone], zone)
 		if err != nil {
 			continue
 		}
@@ -131,19 +131,19 @@ func (r *ringGatherer) ExceedsLimits(ctx context.Context, req *proto.ExceedsLimi
 	}
 	// Any unanswered streams after exhausting all zones must be failed.
 	if len(streams) > 0 {
-		failed := make([]*proto.ExceedsLimitsResult, 0, len(streams))
+		failed := make([]*proto.CheckLimitsResult, 0, len(streams))
 		for _, stream := range streams {
-			failed = append(failed, &proto.ExceedsLimitsResult{
+			failed = append(failed, &proto.CheckLimitsResult{
 				StreamHash: stream.StreamHash,
 				Reason:     uint32(limits.ReasonFailed),
 			})
 		}
-		responses = append(responses, &proto.ExceedsLimitsResponse{Results: failed})
+		responses = append(responses, &proto.CheckLimitsResponse{Results: failed})
 	}
 	return responses, nil
 }
 
-func (r *ringGatherer) doExceedsLimitsRPCs(ctx context.Context, tenant string, streams []*proto.StreamMetadata, partitions map[int32]string, zone string) ([]*proto.ExceedsLimitsResponse, []uint64, error) {
+func (r *ringGatherer) doCheckLimitsRPCs(ctx context.Context, tenant string, streams []*proto.StreamMetadata, partitions map[int32]string, zone string) ([]*proto.CheckLimitsResponse, []uint64, error) {
 	// For each stream, figure out which instance consume its partition.
 	instancesForStreams := make(map[string][]*proto.StreamMetadata)
 	for _, stream := range streams {
@@ -156,7 +156,7 @@ func (r *ringGatherer) doExceedsLimitsRPCs(ctx context.Context, tenant string, s
 		instancesForStreams[addr] = append(instancesForStreams[addr], stream)
 	}
 	errg, ctx := errgroup.WithContext(ctx)
-	responseCh := make(chan *proto.ExceedsLimitsResponse, len(instancesForStreams))
+	responseCh := make(chan *proto.CheckLimitsResponse, len(instancesForStreams))
 	answeredCh := make(chan uint64, len(streams))
 	for addr, streams := range instancesForStreams {
 		errg.Go(func() error {
@@ -165,7 +165,7 @@ func (r *ringGatherer) doExceedsLimitsRPCs(ctx context.Context, tenant string, s
 				level.Error(r.logger).Log("msg", "failed to get client for instance", "instance", addr, "err", err.Error())
 				return nil
 			}
-			resp, err := client.(proto.IngestLimitsClient).ExceedsLimits(ctx, &proto.ExceedsLimitsRequest{
+			resp, err := client.(proto.IngestLimitsClient).CheckLimits(ctx, &proto.CheckLimitsRequest{
 				Tenant:  tenant,
 				Streams: streams,
 			})
@@ -183,7 +183,7 @@ func (r *ringGatherer) doExceedsLimitsRPCs(ctx context.Context, tenant string, s
 	_ = errg.Wait()
 	close(responseCh)
 	close(answeredCh)
-	responses := make([]*proto.ExceedsLimitsResponse, 0, len(instancesForStreams))
+	responses := make([]*proto.CheckLimitsResponse, 0, len(instancesForStreams))
 	for r := range responseCh {
 		responses = append(responses, r)
 	}

@@ -1,6 +1,6 @@
 // Package frontend contains provides a frontend service for ingest limits.
 // It is responsible for receiving and answering gRPC requests from distributors,
-// such as exceeds limits requests, forwarding them to individual limits backends,
+// such as check limits requests, forwarding them to individual limits backends,
 // gathering and aggregating their responses (where required), and returning
 // the final result.
 package frontend
@@ -28,7 +28,7 @@ type Frontend struct {
 	services.Service
 	cfg                     Config
 	logger                  log.Logger
-	gatherer                exceedsLimitsGatherer
+	gatherer                checkLimitsGatherer
 	assignedPartitionsCache cache[string, *proto.GetAssignedPartitionsResponse]
 	subservices             *services.Manager
 	subservicesWatcher      *services.FailureWatcher
@@ -112,15 +112,15 @@ func New(cfg Config, ringName string, limitsRing ring.ReadRing, logger log.Logge
 	return f, nil
 }
 
-// ExceedsLimits implements proto.IngestLimitsFrontendClient.
-func (f *Frontend) ExceedsLimits(ctx context.Context, req *proto.ExceedsLimitsRequest) (*proto.ExceedsLimitsResponse, error) {
+// CheckLimits implements proto.IngestLimitsFrontendClient.
+func (f *Frontend) CheckLimits(ctx context.Context, req *proto.CheckLimitsRequest) (*proto.CheckLimitsResponse, error) {
 	f.streams.Add(float64(len(req.Streams)))
-	results := make([]*proto.ExceedsLimitsResult, 0, len(req.Streams))
-	resps, err := f.gatherer.ExceedsLimits(ctx, req)
+	results := make([]*proto.CheckLimitsResult, 0, len(req.Streams))
+	resps, err := f.gatherer.CheckLimits(ctx, req)
 	if err != nil {
 		// If the entire call failed, then all streams failed.
 		for _, stream := range req.Streams {
-			results = append(results, &proto.ExceedsLimitsResult{
+			results = append(results, &proto.CheckLimitsResult{
 				StreamHash: stream.StreamHash,
 				Reason:     uint32(limits.ReasonFailed),
 			})
@@ -141,7 +141,7 @@ func (f *Frontend) ExceedsLimits(ctx context.Context, req *proto.ExceedsLimitsRe
 			results = append(results, resp.Results...)
 		}
 	}
-	return &proto.ExceedsLimitsResponse{Results: results}, nil
+	return &proto.CheckLimitsResponse{Results: results}, nil
 }
 
 func (f *Frontend) CheckReady(ctx context.Context) error {

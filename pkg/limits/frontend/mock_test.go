@@ -17,21 +17,21 @@ import (
 	"github.com/grafana/loki/v3/pkg/limits/proto"
 )
 
-// mockExceedsLimitsGatherer mocks an ExeceedsLimitsGatherer. It avoids having
+// mockCheckLimitsGatherer mocks a checkLimitsGatherer. It avoids having
 // to set up a mock ring to test the frontend.
-type mockExceedsLimitsGatherer struct {
+type mockCheckLimitsGatherer struct {
 	t *testing.T
 
-	expectedExceedsLimitsRequest *proto.ExceedsLimitsRequest
-	exceedsLimitsResponses       []*proto.ExceedsLimitsResponse
-	err                          error
+	expectedCheckLimitsRequest *proto.CheckLimitsRequest
+	checkLimitsResponses       []*proto.CheckLimitsResponse
+	err                        error
 }
 
-func (m *mockExceedsLimitsGatherer) ExceedsLimits(_ context.Context, req *proto.ExceedsLimitsRequest) ([]*proto.ExceedsLimitsResponse, error) {
-	if expected := m.expectedExceedsLimitsRequest; expected != nil {
+func (m *mockCheckLimitsGatherer) CheckLimits(_ context.Context, req *proto.CheckLimitsRequest) ([]*proto.CheckLimitsResponse, error) {
+	if expected := m.expectedCheckLimitsRequest; expected != nil {
 		require.Equal(m.t, expected, req)
 	}
-	return m.exceedsLimitsResponses, m.err
+	return m.checkLimitsResponses, m.err
 }
 
 // mockIngestLimitsClient mocks proto.IngestLimitsClient.
@@ -43,19 +43,19 @@ type mockIngestLimitsClient struct {
 	// We don't check the expected requests for GetAssignedPartitions as it
 	// has no fields. Instead, tests should check the number of requests
 	// received with [Finished].
-	expectedExceedsLimitsRequests []*proto.ExceedsLimitsRequest
+	expectedCheckLimitsRequests []*proto.CheckLimitsRequest
 
 	// The complete set of mocked responses over the lifetime of the client.
 	// When a request is received, it consumes the next response (or error)
 	// until there are no more left. Aadditional requests fail with an error.
 	getAssignedPartitionsResponses    []*proto.GetAssignedPartitionsResponse
 	getAssignedPartitionsResponseErrs []error
-	exceedsLimitsResponses            []*proto.ExceedsLimitsResponse
-	exceedsLimitsResponseErrs         []error
+	checkLimitsResponses              []*proto.CheckLimitsResponse
+	checkLimitsResponseErrs           []error
 
 	// The actual request counts.
 	numAssignedPartitionsRequests int
-	numExceedsLimitsRequests      int
+	numCheckLimitsRequests        int
 }
 
 func (m *mockIngestLimitsClient) GetAssignedPartitions(_ context.Context, _ *proto.GetAssignedPartitionsRequest, _ ...grpc.CallOption) (*proto.GetAssignedPartitionsResponse, error) {
@@ -72,26 +72,26 @@ func (m *mockIngestLimitsClient) GetAssignedPartitions(_ context.Context, _ *pro
 	return m.getAssignedPartitionsResponses[idx], nil
 }
 
-func (m *mockIngestLimitsClient) ExceedsLimits(_ context.Context, req *proto.ExceedsLimitsRequest, _ ...grpc.CallOption) (*proto.ExceedsLimitsResponse, error) {
-	idx := m.numExceedsLimitsRequests
+func (m *mockIngestLimitsClient) CheckLimits(_ context.Context, req *proto.CheckLimitsRequest, _ ...grpc.CallOption) (*proto.CheckLimitsResponse, error) {
+	idx := m.numCheckLimitsRequests
 	// Check that we haven't received more requests than we have mocked
 	// responses.
-	if idx >= len(m.exceedsLimitsResponses) {
-		return nil, errors.New("unexpected ExceedsLimitsRequest")
+	if idx >= len(m.checkLimitsResponses) {
+		return nil, errors.New("unexpected CheckLimitsRequest")
 	}
-	m.numExceedsLimitsRequests++
-	if len(m.expectedExceedsLimitsRequests) > 0 {
-		require.Equal(m.t, m.expectedExceedsLimitsRequests[idx], req)
+	m.numCheckLimitsRequests++
+	if len(m.expectedCheckLimitsRequests) > 0 {
+		require.Equal(m.t, m.expectedCheckLimitsRequests[idx], req)
 	}
-	if err := m.exceedsLimitsResponseErrs[idx]; err != nil {
+	if err := m.checkLimitsResponseErrs[idx]; err != nil {
 		return nil, err
 	}
-	return m.exceedsLimitsResponses[idx], nil
+	return m.checkLimitsResponses[idx], nil
 }
 
 func (m *mockIngestLimitsClient) Finished() {
 	require.Equal(m.t, len(m.getAssignedPartitionsResponses), m.numAssignedPartitionsRequests)
-	require.Equal(m.t, len(m.exceedsLimitsResponses), m.numExceedsLimitsRequests)
+	require.Equal(m.t, len(m.checkLimitsResponses), m.numCheckLimitsRequests)
 }
 
 func (m *mockIngestLimitsClient) Close() error {

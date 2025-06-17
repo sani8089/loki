@@ -20,22 +20,22 @@ import (
 
 func TestFrontend_ServeHTTP(t *testing.T) {
 	tests := []struct {
-		name                         string
-		expectedExceedsLimitsRequest *proto.ExceedsLimitsRequest
-		exceedsLimitsResponses       []*proto.ExceedsLimitsResponse
-		request                      httpExceedsLimitsRequest
-		expected                     httpExceedsLimitsResponse
+		name                       string
+		expectedCheckLimitsRequest *proto.CheckLimitsRequest
+		checkLimitsResponses       []*proto.CheckLimitsResponse
+		request                    httpCheckLimitsRequest
+		expected                   httpCheckLimitsResponse
 	}{{
 		name: "within limits",
-		expectedExceedsLimitsRequest: &proto.ExceedsLimitsRequest{
+		expectedCheckLimitsRequest: &proto.CheckLimitsRequest{
 			Tenant: "test",
 			Streams: []*proto.StreamMetadata{{
 				StreamHash: 0x1,
 				TotalSize:  0x5,
 			}},
 		},
-		exceedsLimitsResponses: []*proto.ExceedsLimitsResponse{{}},
-		request: httpExceedsLimitsRequest{
+		checkLimitsResponses: []*proto.CheckLimitsResponse{{}},
+		request: httpCheckLimitsRequest{
 			Tenant: "test",
 			Streams: []*proto.StreamMetadata{{
 				StreamHash: 0x1,
@@ -45,28 +45,28 @@ func TestFrontend_ServeHTTP(t *testing.T) {
 		// expected should be default value.
 	}, {
 		name: "exceeds limits",
-		expectedExceedsLimitsRequest: &proto.ExceedsLimitsRequest{
+		expectedCheckLimitsRequest: &proto.CheckLimitsRequest{
 			Tenant: "test",
 			Streams: []*proto.StreamMetadata{{
 				StreamHash: 0x1,
 				TotalSize:  0x5,
 			}},
 		},
-		exceedsLimitsResponses: []*proto.ExceedsLimitsResponse{{
-			Results: []*proto.ExceedsLimitsResult{{
+		checkLimitsResponses: []*proto.CheckLimitsResponse{{
+			Results: []*proto.CheckLimitsResult{{
 				StreamHash: 0x1,
 				Reason:     uint32(limits.ReasonMaxStreams),
 			}},
 		}},
-		request: httpExceedsLimitsRequest{
+		request: httpCheckLimitsRequest{
 			Tenant: "test",
 			Streams: []*proto.StreamMetadata{{
 				StreamHash: 0x1,
 				TotalSize:  0x5,
 			}},
 		},
-		expected: httpExceedsLimitsResponse{
-			Results: []*proto.ExceedsLimitsResult{{
+		expected: httpCheckLimitsResponse{
+			Results: []*proto.CheckLimitsResult{{
 				StreamHash: 0x1,
 				Reason:     uint32(limits.ReasonMaxStreams),
 			}},
@@ -86,10 +86,10 @@ func TestFrontend_ServeHTTP(t *testing.T) {
 				},
 			}, "test", readRing, log.NewNopLogger(), prometheus.NewRegistry())
 			require.NoError(t, err)
-			f.gatherer = &mockExceedsLimitsGatherer{
-				t:                            t,
-				expectedExceedsLimitsRequest: test.expectedExceedsLimitsRequest,
-				exceedsLimitsResponses:       test.exceedsLimitsResponses,
+			f.gatherer = &mockCheckLimitsGatherer{
+				t:                          t,
+				expectedCheckLimitsRequest: test.expectedCheckLimitsRequest,
+				checkLimitsResponses:       test.checkLimitsResponses,
 			}
 			ts := httptest.NewServer(f)
 			defer ts.Close()
@@ -105,7 +105,7 @@ func TestFrontend_ServeHTTP(t *testing.T) {
 			b, err = io.ReadAll(resp.Body)
 			require.NoError(t, err)
 
-			var actual httpExceedsLimitsResponse
+			var actual httpCheckLimitsResponse
 			require.NoError(t, json.Unmarshal(b, &actual))
 			require.Equal(t, test.expected, actual)
 		})

@@ -719,6 +719,7 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 	}
 
 	if d.cfg.IngestLimitsEnabled {
+		//
 		accepted, err := d.ingestLimits.EnforceLimits(ctx, tenantID, streams)
 		if err == nil && !d.cfg.IngestLimitsDryRunEnabled {
 			if len(accepted) == 0 {

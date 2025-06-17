@@ -18,7 +18,7 @@ import (
 
 // ingestLimitsFrontendClient is used for tests.
 type ingestLimitsFrontendClient interface {
-	ExceedsLimits(context.Context, *proto.ExceedsLimitsRequest) (*proto.ExceedsLimitsResponse, error)
+	CheckLimits(context.Context, *proto.CheckLimitsRequest) (*proto.CheckLimitsResponse, error)
 }
 
 // ingestLimitsFrontendRingClient uses the ring to query ingest-limits frontends.
@@ -34,8 +34,8 @@ func newIngestLimitsFrontendRingClient(ring ring.ReadRing, pool *ring_client.Poo
 	}
 }
 
-// Implements the ingestLimitsFrontendClient interface.
-func (c *ingestLimitsFrontendRingClient) ExceedsLimits(ctx context.Context, req *proto.ExceedsLimitsRequest) (*proto.ExceedsLimitsResponse, error) {
+// CheckLimits Implements the ingestLimitsFrontendClient interface.
+func (c *ingestLimitsFrontendRingClient) CheckLimits(ctx context.Context, req *proto.CheckLimitsRequest) (*proto.CheckLimitsResponse, error) {
 	// We use an FNV-1 of all stream hashes in the request to load balance requests
 	// to limits-frontends instances.
 	h := fnv.New32()
@@ -66,7 +66,7 @@ func (c *ingestLimitsFrontendRingClient) ExceedsLimits(ctx context.Context, req 
 			continue
 		}
 		client := c.(proto.IngestLimitsFrontendClient)
-		resp, err := client.ExceedsLimits(ctx, req)
+		resp, err := client.CheckLimits(ctx, req)
 		if err != nil {
 			lastErr = err
 			continue
@@ -96,7 +96,7 @@ func newIngestLimits(client ingestLimitsFrontendClient, r prometheus.Registerer)
 // limits). Any streams that could not have their limits checked are also
 // accepted.
 func (l *ingestLimits) EnforceLimits(ctx context.Context, tenant string, streams []KeyedStream) ([]KeyedStream, error) {
-	results, err := l.ExceedsLimits(ctx, tenant, streams)
+	results, err := l.CheckLimits(ctx, tenant, streams)
 	if err != nil {
 		return streams, err
 	}
@@ -126,27 +126,27 @@ func (l *ingestLimits) EnforceLimits(ctx context.Context, tenant string, streams
 	return accepted, nil
 }
 
-// ExceedsLimits checks all streams against the per-tenant limits. It returns
+// CheckLimits checks all streams against the per-tenant limits. It returns
 // an error if the client failed to send the request or receive a response
 // from the server. Any streams that could not have their limits checked
 // and returned in the results with the reason "ReasonFailed".
-func (l *ingestLimits) ExceedsLimits(
+func (l *ingestLimits) CheckLimits(
 	ctx context.Context,
 	tenant string,
 	streams []KeyedStream,
-) ([]*proto.ExceedsLimitsResult, error) {
-	req, err := newExceedsLimitsRequest(tenant, streams)
+) ([]*proto.CheckLimitsResult, error) {
+	req, err := newCheckLimitsRequest(tenant, streams)
 	if err != nil {
 		return nil, err
 	}
-	resp, err := l.client.ExceedsLimits(ctx, req)
+	resp, err := l.client.CheckLimits(ctx, req)
 	if err != nil {
 		return nil, err
 	}
 	return resp.Results, nil
 }
 
-func newExceedsLimitsRequest(tenant string, streams []KeyedStream) (*proto.ExceedsLimitsRequest, error) {
+func newCheckLimitsRequest(tenant string, streams []KeyedStream) (*proto.CheckLimitsRequest, error) {
 	// The distributor sends the hashes of all streams in the request to the
 	// limits-frontend. The limits-frontend is responsible for deciding if
 	// the request would exceed the tenants limits, and if so, which streams
@@ -159,7 +159,7 @@ func newExceedsLimitsRequest(tenant string, streams []KeyedStream) (*proto.Excee
 			TotalSize:  entriesSize + structuredMetadataSize,
 		})
 	}
-	return &proto.ExceedsLimitsRequest{
+	return &proto.CheckLimitsRequest{
 		Tenant:  tenant,
 		Streams: streamMetadata,
 	}, nil

@@ -6,9 +6,9 @@ import (
 	"github.com/grafana/loki/v3/pkg/limits/proto"
 )
 
-type exceedsLimitsGatherer interface {
-	// ExceedsLimits checks if the streams in the request have exceeded their
-	// per-partition limits. It returns more than one response when the
-	// requested streams are sharded over two or more limits instances.
-	ExceedsLimits(context.Context, *proto.ExceedsLimitsRequest) ([]*proto.ExceedsLimitsResponse, error)
+type checkLimitsGatherer interface {
+	// CheckLimits checks if the streams in the request have either reached or
+	// exceeded their per-partition limits. It returns more than one response
+	// when the requested streams are sharded over two or more limits instances.
+	CheckLimits(context.Context, *proto.CheckLimitsRequest) ([]*proto.CheckLimitsResponse, error)
 }

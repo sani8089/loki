@@ -15,10 +15,10 @@ import (
 	"github.com/grafana/loki/v3/pkg/limits/proto"
 )
 
-func TestRingGatherer_ExceedsLimits(t *testing.T) {
+func TestRingGatherer_CheckLimits(t *testing.T) {
 	tests := []struct {
 		name    string
-		request *proto.ExceedsLimitsRequest
+		request *proto.CheckLimitsRequest
 		// Instances contains the complete set of instances that should be
 		// mocked. For example, if a test case is expected to make RPC calls
 		// to one instance, then just one InstanceDesc is required.
@@ -39,19 +39,19 @@ func TestRingGatherer_ExceedsLimits(t *testing.T) {
 		// expected response. For example []error{nil, nil} when we expect
 		// two successful responses.
 		getAssignedPartitionsResponseErrs [][]error
-		expectedExceedsLimitsRequests     [][]*proto.ExceedsLimitsRequest
-		exceedsLimitsResponses            [][]*proto.ExceedsLimitsResponse
-		// Even if no errors are expected for the ExceedsLimits RPC, each
+		expectedCheckLimitsRequests       [][]*proto.CheckLimitsRequest
+		checkLimitsResponses              [][]*proto.CheckLimitsResponse
+		// Even if no errors are expected for the CheckLimits RPC, each
 		// per-instance error slice must have a nil error for each expected
 		// response. For example []error{nil, nil} when we expect two
 		// successful responses.
-		exceedsLimitsResponseErrs [][]error
-		expected                  []*proto.ExceedsLimitsResponse
-		expectedErr               string
+		checkLimitsResponseErrs [][]error
+		expected                []*proto.CheckLimitsResponse
+		expectedErr             string
 	}{{
 		// When there are no streams, no RPCs should be sent.
 		name: "no streams",
-		request: &proto.ExceedsLimitsRequest{
+		request: &proto.CheckLimitsRequest{
 			Tenant:  "test",
 			Streams: nil,
 		},
@@ -59,14 +59,14 @@ func TestRingGatherer_ExceedsLimits(t *testing.T) {
 		numPartitions:                     1,
 		getAssignedPartitionsResponses:    [][]*proto.GetAssignedPartitionsResponse{nil},
 		getAssignedPartitionsResponseErrs: [][]error{nil},
-		expectedExceedsLimitsRequests:     [][]*proto.ExceedsLimitsRequest{nil},
-		exceedsLimitsResponses:            [][]*proto.ExceedsLimitsResponse{nil},
-		exceedsLimitsResponseErrs:         [][]error{nil},
+		expectedCheckLimitsRequests:       [][]*proto.CheckLimitsRequest{nil},
+		checkLimitsResponses:              [][]*proto.CheckLimitsResponse{nil},
+		checkLimitsResponseErrs:           [][]error{nil},
 	}, {
 		// When there is one instance owning all partitions, that instance is
 		// responsible for enforcing limits of all streams.
 		name: "one stream one instance",
-		request: &proto.ExceedsLimitsRequest{
+		request: &proto.CheckLimitsRequest{
 			Tenant: "test",
 			Streams: []*proto.StreamMetadata{{
 				StreamHash: 0x1, // 0x1 is assigned to partition 0.
@@ -83,22 +83,22 @@ func TestRingGatherer_ExceedsLimits(t *testing.T) {
 			},
 		}}},
 		getAssignedPartitionsResponseErrs: [][]error{{nil}},
-		expectedExceedsLimitsRequests: [][]*proto.ExceedsLimitsRequest{{{
+		expectedCheckLimitsRequests: [][]*proto.CheckLimitsRequest{{{
 			Tenant: "test",
 			Streams: []*proto.StreamMetadata{{
 				StreamHash: 0x1,
 				TotalSize:  0x5,
 			}},
 		}}},
-		exceedsLimitsResponses: [][]*proto.ExceedsLimitsResponse{{{
-			Results: []*proto.ExceedsLimitsResult{{
+		checkLimitsResponses: [][]*proto.CheckLimitsResponse{{{
+			Results: []*proto.CheckLimitsResult{{
 				StreamHash: 0x1,
 				Reason:     uint32(limits.ReasonMaxStreams),
 			}},
 		}}},
-		exceedsLimitsResponseErrs: [][]error{{nil}},
-		expected: []*proto.ExceedsLimitsResponse{{
-			Results: []*proto.ExceedsLimitsResult{{
+		checkLimitsResponseErrs: [][]error{{nil}},
+		expected: []*proto.CheckLimitsResponse{{
+			Results: []*proto.CheckLimitsResult{{
 				StreamHash: 0x1,
 				Reason:     uint32(limits.ReasonMaxStreams),
 			}},
@@ -109,7 +109,7 @@ func TestRingGatherer_ExceedsLimits(t *testing.T) {
 		// partitions. But when we have one stream, just one instance
 		// should be called to enforce limits.
 		name: "one stream two instances",
-		request: &proto.ExceedsLimitsRequest{
+		request: &proto.CheckLimitsRequest{
 			Tenant: "test",
 			Streams: []*proto.StreamMetadata{{
 				StreamHash: 0x1, // 0x1 is assigned to partition 1.
@@ -132,7 +132,7 @@ func TestRingGatherer_ExceedsLimits(t *testing.T) {
 			},
 		}}},
 		getAssignedPartitionsResponseErrs: [][]error{{nil}, {nil}},
-		expectedExceedsLimitsRequests: [][]*proto.ExceedsLimitsRequest{
+		expectedCheckLimitsRequests: [][]*proto.CheckLimitsRequest{
 			nil, {{
 				Tenant: "test",
 				Streams: []*proto.StreamMetadata{{
@@ -141,17 +141,17 @@ func TestRingGatherer_ExceedsLimits(t *testing.T) {
 				}},
 			}},
 		},
-		exceedsLimitsResponses: [][]*proto.ExceedsLimitsResponse{
+		checkLimitsResponses: [][]*proto.CheckLimitsResponse{
 			nil, {{
-				Results: []*proto.ExceedsLimitsResult{{
+				Results: []*proto.CheckLimitsResult{{
 					StreamHash: 0x1,
 					Reason:     uint32(limits.ReasonMaxStreams),
 				}},
 			}},
 		},
-		exceedsLimitsResponseErrs: [][]error{{nil}, {nil}},
-		expected: []*proto.ExceedsLimitsResponse{{
-			Results: []*proto.ExceedsLimitsResult{{
+		checkLimitsResponseErrs: [][]error{{nil}, {nil}},
+		expected: []*proto.CheckLimitsResponse{{
+			Results: []*proto.CheckLimitsResult{{
 				StreamHash: 0x1,
 				Reason:     uint32(limits.ReasonMaxStreams),
 			}},
@@ -161,7 +161,7 @@ func TestRingGatherer_ExceedsLimits(t *testing.T) {
 		// shard to one partition, just the instance that consumes that
 		// partition should be called to enforce limits.
 		name: "two streams, two instances, all streams to one partition",
-		request: &proto.ExceedsLimitsRequest{
+		request: &proto.CheckLimitsRequest{
 			Tenant: "test",
 			Streams: []*proto.StreamMetadata{{
 				StreamHash: 0x1, // 0x1 is assigned to partition 1.
@@ -187,7 +187,7 @@ func TestRingGatherer_ExceedsLimits(t *testing.T) {
 			},
 		}}},
 		getAssignedPartitionsResponseErrs: [][]error{{nil}, {nil}},
-		expectedExceedsLimitsRequests: [][]*proto.ExceedsLimitsRequest{
+		expectedCheckLimitsRequests: [][]*proto.CheckLimitsRequest{
 			nil, {{
 				Tenant: "test",
 				Streams: []*proto.StreamMetadata{{
@@ -199,17 +199,17 @@ func TestRingGatherer_ExceedsLimits(t *testing.T) {
 				}},
 			}},
 		},
-		exceedsLimitsResponses: [][]*proto.ExceedsLimitsResponse{
+		checkLimitsResponses: [][]*proto.CheckLimitsResponse{
 			nil, {{
-				Results: []*proto.ExceedsLimitsResult{{
+				Results: []*proto.CheckLimitsResult{{
 					StreamHash: 0x1,
 					Reason:     uint32(limits.ReasonMaxStreams),
 				}},
 			}},
 		},
-		exceedsLimitsResponseErrs: [][]error{{nil}, {nil}},
-		expected: []*proto.ExceedsLimitsResponse{{
-			Results: []*proto.ExceedsLimitsResult{{
+		checkLimitsResponseErrs: [][]error{{nil}, {nil}},
+		expected: []*proto.CheckLimitsResponse{{
+			Results: []*proto.CheckLimitsResult{{
 				StreamHash: 0x1,
 				Reason:     uint32(limits.ReasonMaxStreams),
 			}},
@@ -219,7 +219,7 @@ func TestRingGatherer_ExceedsLimits(t *testing.T) {
 		// shards to different partitions, all instances should be called
 		// called to enforce limits.
 		name: "two streams, two instances, one stream each",
-		request: &proto.ExceedsLimitsRequest{
+		request: &proto.CheckLimitsRequest{
 			Tenant: "test",
 			Streams: []*proto.StreamMetadata{{
 				StreamHash: 0x1, // 0x1 is assigned to partition 1.
@@ -245,7 +245,7 @@ func TestRingGatherer_ExceedsLimits(t *testing.T) {
 			},
 		}}},
 		getAssignedPartitionsResponseErrs: [][]error{{nil}, {nil}},
-		expectedExceedsLimitsRequests: [][]*proto.ExceedsLimitsRequest{{{
+		expectedCheckLimitsRequests: [][]*proto.CheckLimitsRequest{{{
 			Tenant: "test",
 			Streams: []*proto.StreamMetadata{{
 				StreamHash: 0x2,
@@ -258,25 +258,25 @@ func TestRingGatherer_ExceedsLimits(t *testing.T) {
 				TotalSize:  0x5,
 			}},
 		}}},
-		exceedsLimitsResponses: [][]*proto.ExceedsLimitsResponse{{{
-			Results: []*proto.ExceedsLimitsResult{{
+		checkLimitsResponses: [][]*proto.CheckLimitsResponse{{{
+			Results: []*proto.CheckLimitsResult{{
 				StreamHash: 0x2,
 				Reason:     uint32(limits.ReasonMaxStreams),
 			}},
 		}}, {{
-			Results: []*proto.ExceedsLimitsResult{{
+			Results: []*proto.CheckLimitsResult{{
 				StreamHash: 0x1,
 				Reason:     uint32(limits.ReasonMaxStreams),
 			}},
 		}}},
-		exceedsLimitsResponseErrs: [][]error{{nil}, {nil}},
-		expected: []*proto.ExceedsLimitsResponse{{
-			Results: []*proto.ExceedsLimitsResult{{
+		checkLimitsResponseErrs: [][]error{{nil}, {nil}},
+		expected: []*proto.CheckLimitsResponse{{
+			Results: []*proto.CheckLimitsResult{{
 				StreamHash: 0x1,
 				Reason:     uint32(limits.ReasonMaxStreams),
 			}},
 		}, {
-			Results: []*proto.ExceedsLimitsResult{{
+			Results: []*proto.CheckLimitsResult{{
 				StreamHash: 0x2,
 				Reason:     uint32(limits.ReasonMaxStreams),
 			}},
@@ -285,7 +285,7 @@ func TestRingGatherer_ExceedsLimits(t *testing.T) {
 		// When one instance returns an error, the streams for that instance
 		// are failed.
 		name: "two streams, two instances, one instance returns error",
-		request: &proto.ExceedsLimitsRequest{
+		request: &proto.CheckLimitsRequest{
 			Tenant: "test",
 			Streams: []*proto.StreamMetadata{{
 				StreamHash: 0x1, // 0x1 is assigned to partition 1.
@@ -311,7 +311,7 @@ func TestRingGatherer_ExceedsLimits(t *testing.T) {
 			},
 		}}},
 		getAssignedPartitionsResponseErrs: [][]error{{nil}, {nil}},
-		expectedExceedsLimitsRequests: [][]*proto.ExceedsLimitsRequest{{{
+		expectedCheckLimitsRequests: [][]*proto.CheckLimitsRequest{{{
 			Tenant: "test",
 			Streams: []*proto.StreamMetadata{{
 				StreamHash: 0x2,
@@ -324,22 +324,22 @@ func TestRingGatherer_ExceedsLimits(t *testing.T) {
 				TotalSize:  0x5,
 			}},
 		}}},
-		exceedsLimitsResponses: [][]*proto.ExceedsLimitsResponse{{{
-			Results: []*proto.ExceedsLimitsResult{{
+		checkLimitsResponses: [][]*proto.CheckLimitsResponse{{{
+			Results: []*proto.CheckLimitsResult{{
 				StreamHash: 0x2,
 				Reason:     uint32(limits.ReasonMaxStreams),
 			}},
 		}}, nil},
-		exceedsLimitsResponseErrs: [][]error{{nil}, {
+		checkLimitsResponseErrs: [][]error{{nil}, {
 			errors.New("an unexpected error occurred"),
 		}},
-		expected: []*proto.ExceedsLimitsResponse{{
-			Results: []*proto.ExceedsLimitsResult{{
+		expected: []*proto.CheckLimitsResponse{{
+			Results: []*proto.CheckLimitsResult{{
 				StreamHash: 0x2,
 				Reason:     uint32(limits.ReasonMaxStreams),
 			}},
 		}, {
-			Results: []*proto.ExceedsLimitsResult{{
+			Results: []*proto.CheckLimitsResult{{
 				StreamHash: 0x1,
 				Reason:     uint32(limits.ReasonFailed),
 			}},
@@ -348,7 +348,7 @@ func TestRingGatherer_ExceedsLimits(t *testing.T) {
 		// When one zone returns an error, the streams for that instance
 		// should be checked against the other zone.
 		name: "two streams, two zones, one instance each, first zone returns error",
-		request: &proto.ExceedsLimitsRequest{
+		request: &proto.CheckLimitsRequest{
 			Tenant: "test",
 			Streams: []*proto.StreamMetadata{{
 				StreamHash: 0x1, // 0x1 is assigned to partition 1.
@@ -373,7 +373,7 @@ func TestRingGatherer_ExceedsLimits(t *testing.T) {
 			},
 		}}},
 		getAssignedPartitionsResponseErrs: [][]error{{nil}, {nil}},
-		expectedExceedsLimitsRequests: [][]*proto.ExceedsLimitsRequest{{{
+		expectedCheckLimitsRequests: [][]*proto.CheckLimitsRequest{{{
 			Tenant: "test",
 			Streams: []*proto.StreamMetadata{{
 				StreamHash: 0x1,
@@ -388,19 +388,19 @@ func TestRingGatherer_ExceedsLimits(t *testing.T) {
 				TotalSize:  0x5,
 			}},
 		}}},
-		exceedsLimitsResponses: [][]*proto.ExceedsLimitsResponse{{nil}, {{
-			Results: []*proto.ExceedsLimitsResult{{
+		checkLimitsResponses: [][]*proto.CheckLimitsResponse{{nil}, {{
+			Results: []*proto.CheckLimitsResult{{
 				StreamHash: 0x1,
 				Reason:     uint32(limits.ReasonMaxStreams),
 			}},
 		}}},
-		exceedsLimitsResponseErrs: [][]error{{
+		checkLimitsResponseErrs: [][]error{{
 			errors.New("an unexpected error occurred"),
 		}, {
 			nil,
 		}},
-		expected: []*proto.ExceedsLimitsResponse{{
-			Results: []*proto.ExceedsLimitsResult{{
+		expected: []*proto.CheckLimitsResponse{{
+			Results: []*proto.CheckLimitsResult{{
 				StreamHash: 0x1,
 				Reason:     uint32(limits.ReasonMaxStreams),
 			}},
@@ -416,9 +416,9 @@ func TestRingGatherer_ExceedsLimits(t *testing.T) {
 					t:                                 t,
 					getAssignedPartitionsResponses:    test.getAssignedPartitionsResponses[i],
 					getAssignedPartitionsResponseErrs: test.getAssignedPartitionsResponseErrs[i],
-					expectedExceedsLimitsRequests:     test.expectedExceedsLimitsRequests[i],
-					exceedsLimitsResponses:            test.exceedsLimitsResponses[i],
-					exceedsLimitsResponseErrs:         test.exceedsLimitsResponseErrs[i],
+					expectedCheckLimitsRequests:       test.expectedCheckLimitsRequests[i],
+					checkLimitsResponses:              test.checkLimitsResponses[i],
+					checkLimitsResponseErrs:           test.checkLimitsResponseErrs[i],
 				}
 				t.Cleanup(mockClients[i].Finished)
 			}
@@ -430,7 +430,7 @@ func TestRingGatherer_ExceedsLimits(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 			defer cancel()
 
-			actual, err := g.ExceedsLimits(ctx, test.request)
+			actual, err := g.CheckLimits(ctx, test.request)
 			if test.expectedErr != "" {
 				require.EqualError(t, err, test.expectedErr)
 				require.Nil(t, actual)

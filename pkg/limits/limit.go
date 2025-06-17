@@ -56,7 +56,7 @@ func newLimitsChecker(limits Limits, store *usageStore, producer *producer, part
 	}
 }
 
-func (c *limitsChecker) ExceedsLimits(ctx context.Context, req *proto.ExceedsLimitsRequest) (*proto.ExceedsLimitsResponse, error) {
+func (c *limitsChecker) CheckLimits(ctx context.Context, req *proto.CheckLimitsRequest) (*proto.CheckLimitsResponse, error) {
 	streams := req.Streams
 	valid := 0
 	for _, stream := range streams {
@@ -91,13 +91,13 @@ func (c *limitsChecker) ExceedsLimits(ctx context.Context, req *proto.ExceedsLim
 	}
 	c.tenantIngestedBytesTotal.WithLabelValues(req.Tenant).Add(float64(ingestedBytes))
 
-	results := make([]*proto.ExceedsLimitsResult, 0, len(rejected))
+	results := make([]*proto.CheckLimitsResult, 0, len(rejected))
 	for _, stream := range rejected {
-		results = append(results, &proto.ExceedsLimitsResult{
+		results = append(results, &proto.CheckLimitsResult{
 			StreamHash: stream.StreamHash,
 			Reason:     uint32(ReasonMaxStreams),
 		})
 	}
 
-	return &proto.ExceedsLimitsResponse{Results: results}, nil
+	return &proto.CheckLimitsResponse{Results: results}, nil
 }

@@ -168,12 +168,12 @@ func (s *Service) GetAssignedPartitions(
 	return &resp, nil
 }
 
-// ExceedsLimits implements the proto.IngestLimitsServer interface.
-func (s *Service) ExceedsLimits(
+// CheckLimits implements the proto.IngestLimitsServer interface.
+func (s *Service) CheckLimits(
 	ctx context.Context,
-	req *proto.ExceedsLimitsRequest,
-) (*proto.ExceedsLimitsResponse, error) {
-	return s.limitsChecker.ExceedsLimits(ctx, req)
+	req *proto.CheckLimitsRequest,
+) (*proto.CheckLimitsResponse, error) {
+	return s.limitsChecker.CheckLimits(ctx, req)
 }
 
 func (s *Service) CheckReady(ctx context.Context) error {

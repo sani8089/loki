@@ -16,61 +16,61 @@ import (
 	"github.com/grafana/loki/v3/pkg/limits/proto"
 )
 
-func TestFrontend_ExceedsLimits(t *testing.T) {
+func TestFrontend_CheckLimits(t *testing.T) {
 	tests := []struct {
-		name                   string
-		exceedsLimitsRequest   *proto.ExceedsLimitsRequest
-		exceedsLimitsResponses []*proto.ExceedsLimitsResponse
-		err                    error
-		expected               *proto.ExceedsLimitsResponse
+		name                 string
+		checkLimitsRequest   *proto.CheckLimitsRequest
+		checkLimitsResponses []*proto.CheckLimitsResponse
+		err                  error
+		expected             *proto.CheckLimitsResponse
 	}{{
 		name: "no streams",
-		exceedsLimitsRequest: &proto.ExceedsLimitsRequest{
+		checkLimitsRequest: &proto.CheckLimitsRequest{
 			Tenant:  "test",
 			Streams: nil,
 		},
-		expected: &proto.ExceedsLimitsResponse{
-			Results: []*proto.ExceedsLimitsResult{},
+		expected: &proto.CheckLimitsResponse{
+			Results: []*proto.CheckLimitsResult{},
 		},
 	}, {
 		name: "one stream",
-		exceedsLimitsRequest: &proto.ExceedsLimitsRequest{
+		checkLimitsRequest: &proto.CheckLimitsRequest{
 			Tenant: "test",
 			Streams: []*proto.StreamMetadata{{
 				StreamHash: 0x1,
 				TotalSize:  0x5,
 			}},
 		},
-		exceedsLimitsResponses: []*proto.ExceedsLimitsResponse{{
-			Results: []*proto.ExceedsLimitsResult{{
+		checkLimitsResponses: []*proto.CheckLimitsResponse{{
+			Results: []*proto.CheckLimitsResult{{
 				StreamHash: 0x1,
 				Reason:     uint32(limits.ReasonMaxStreams),
 			}},
 		}},
-		expected: &proto.ExceedsLimitsResponse{
-			Results: []*proto.ExceedsLimitsResult{{
+		expected: &proto.CheckLimitsResponse{
+			Results: []*proto.CheckLimitsResult{{
 				StreamHash: 0x1,
 				Reason:     uint32(limits.ReasonMaxStreams),
 			}},
 		},
 	}, {
 		name: "one stream, no responses",
-		exceedsLimitsRequest: &proto.ExceedsLimitsRequest{
+		checkLimitsRequest: &proto.CheckLimitsRequest{
 			Tenant: "test",
 			Streams: []*proto.StreamMetadata{{
 				StreamHash: 0x1,
 				TotalSize:  0x5,
 			}},
 		},
-		exceedsLimitsResponses: []*proto.ExceedsLimitsResponse{{
-			Results: []*proto.ExceedsLimitsResult{},
+		checkLimitsResponses: []*proto.CheckLimitsResponse{{
+			Results: []*proto.CheckLimitsResult{},
 		}},
-		expected: &proto.ExceedsLimitsResponse{
-			Results: []*proto.ExceedsLimitsResult{},
+		expected: &proto.CheckLimitsResponse{
+			Results: []*proto.CheckLimitsResult{},
 		},
 	}, {
 		name: "two stream, one response",
-		exceedsLimitsRequest: &proto.ExceedsLimitsRequest{
+		checkLimitsRequest: &proto.CheckLimitsRequest{
 			Tenant: "test",
 			Streams: []*proto.StreamMetadata{{
 				StreamHash: 0x1,
@@ -80,8 +80,8 @@ func TestFrontend_ExceedsLimits(t *testing.T) {
 				TotalSize:  0x9,
 			}},
 		},
-		exceedsLimitsResponses: []*proto.ExceedsLimitsResponse{{
-			Results: []*proto.ExceedsLimitsResult{{
+		checkLimitsResponses: []*proto.CheckLimitsResponse{{
+			Results: []*proto.CheckLimitsResult{{
 				StreamHash: 0x1,
 				Reason:     uint32(limits.ReasonMaxStreams),
 			}, {
@@ -89,8 +89,8 @@ func TestFrontend_ExceedsLimits(t *testing.T) {
 				Reason:     uint32(limits.ReasonMaxStreams),
 			}},
 		}},
-		expected: &proto.ExceedsLimitsResponse{
-			Results: []*proto.ExceedsLimitsResult{{
+		expected: &proto.CheckLimitsResponse{
+			Results: []*proto.CheckLimitsResult{{
 				StreamHash: 0x1,
 				Reason:     uint32(limits.ReasonMaxStreams),
 			}, {
@@ -100,7 +100,7 @@ func TestFrontend_ExceedsLimits(t *testing.T) {
 		},
 	}, {
 		name: "two stream, two responses",
-		exceedsLimitsRequest: &proto.ExceedsLimitsRequest{
+		checkLimitsRequest: &proto.CheckLimitsRequest{
 			Tenant: "test",
 			Streams: []*proto.StreamMetadata{{
 				StreamHash: 0x1,
@@ -110,19 +110,19 @@ func TestFrontend_ExceedsLimits(t *testing.T) {
 				TotalSize:  0x9,
 			}},
 		},
-		exceedsLimitsResponses: []*proto.ExceedsLimitsResponse{{
-			Results: []*proto.ExceedsLimitsResult{{
+		checkLimitsResponses: []*proto.CheckLimitsResponse{{
+			Results: []*proto.CheckLimitsResult{{
 				StreamHash: 0x1,
 				Reason:     uint32(limits.ReasonMaxStreams),
 			}},
 		}, {
-			Results: []*proto.ExceedsLimitsResult{{
+			Results: []*proto.CheckLimitsResult{{
 				StreamHash: 0x4,
 				Reason:     uint32(limits.ReasonMaxStreams),
 			}},
 		}},
-		expected: &proto.ExceedsLimitsResponse{
-			Results: []*proto.ExceedsLimitsResult{{
+		expected: &proto.CheckLimitsResponse{
+			Results: []*proto.CheckLimitsResult{{
 				StreamHash: 0x1,
 				Reason:     uint32(limits.ReasonMaxStreams),
 			}, {
@@ -132,7 +132,7 @@ func TestFrontend_ExceedsLimits(t *testing.T) {
 		},
 	}, {
 		name: "unexpected error, response with failed reason",
-		exceedsLimitsRequest: &proto.ExceedsLimitsRequest{
+		checkLimitsRequest: &proto.CheckLimitsRequest{
 			Tenant: "test",
 			Streams: []*proto.StreamMetadata{{
 				StreamHash: 0x1,
@@ -143,8 +143,8 @@ func TestFrontend_ExceedsLimits(t *testing.T) {
 			}},
 		},
 		err: errors.New("an unexpected error occurred"),
-		expected: &proto.ExceedsLimitsResponse{
-			Results: []*proto.ExceedsLimitsResult{{
+		expected: &proto.CheckLimitsResponse{
+			Results: []*proto.CheckLimitsResult{{
 				StreamHash: 0x1,
 				Reason:     uint32(limits.ReasonFailed),
 			}, {
@@ -168,15 +168,15 @@ func TestFrontend_ExceedsLimits(t *testing.T) {
 			}, "test", readRing, log.NewNopLogger(), prometheus.NewRegistry())
 			require.NoError(t, err)
 			// Replace with our mock.
-			f.gatherer = &mockExceedsLimitsGatherer{
-				t:                            t,
-				expectedExceedsLimitsRequest: test.exceedsLimitsRequest,
-				exceedsLimitsResponses:       test.exceedsLimitsResponses,
-				err:                          test.err,
+			f.gatherer = &mockCheckLimitsGatherer{
+				t:                          t,
+				expectedCheckLimitsRequest: test.checkLimitsRequest,
+				checkLimitsResponses:       test.checkLimitsResponses,
+				err:                        test.err,
 			}
 			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 			defer cancel()
-			actual, err := f.ExceedsLimits(ctx, test.exceedsLimitsRequest)
+			actual, err := f.CheckLimits(ctx, test.checkLimitsRequest)
 			require.NoError(t, err)
 			require.Equal(t, test.expected, actual)
 		})
